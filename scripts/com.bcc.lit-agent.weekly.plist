@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd agent: runs the weekly lit-agent pipeline. Install with:
+       cp scripts/com.bcc.lit-agent.weekly.plist ~/Library/LaunchAgents/
+       launchctl load -w ~/Library/LaunchAgents/com.bcc.lit-agent.weekly.plist
+     Disable with:
+       launchctl unload -w ~/Library/LaunchAgents/com.bcc.lit-agent.weekly.plist
+     Runs Mondays at 07:00 local. Logs to logs/launchd_weekly.{out,err}. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bcc.lit-agent.weekly</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/annivoigt/Documents/OHSU/lit-agent/scripts/run_weekly.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/annivoigt/Documents/OHSU/lit-agent</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key><integer>1</integer>
+        <key>Hour</key><integer>7</integer>
+        <key>Minute</key><integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/annivoigt/Documents/OHSU/lit-agent/logs/launchd_weekly.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/annivoigt/Documents/OHSU/lit-agent/logs/launchd_weekly.err</string>
+</dict>
+</plist>

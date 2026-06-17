@@ -20,6 +20,7 @@ data/*
 out/*
 !out/.gitkeep
 eval/results/
+logs/
 *.sqlite
 *.sqlite3
 *.db
