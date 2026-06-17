@@ -1,5 +1,3 @@
-<!-- The YAML block below is the Hugging Face Space card (read by HF when this
-repo is deployed as a Gradio Space). It is harmless on GitHub. -->
 ---
 title: BCC PDAC Literature Q&A
 emoji: 📚
