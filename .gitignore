@@ -19,6 +19,7 @@ data/*
 !data/.gitkeep
 out/*
 !out/.gitkeep
+eval/results/
 *.sqlite
 *.sqlite3
 *.db

@@ -42,7 +42,7 @@ app.py · ui.py   — HF Space (Phase 5)
 | 3 | Deliver — Resend mailer + cron + `SEND_LIVE` gate | ✅ wired (live pending domain + recipients) |
 | 4 | Analytics — windows/deltas + cache | ✅ done |
 | 5 | Q&A Space — retrieve + grounded answer + guard (Gradio) | ✅ done |
-| 6 | Eval & harden — groundedness + relevance | scaffolded |
+| 6 | Eval & harden — groundedness + relevance | ✅ done (Q&A 8/8 · relevance P100/R89) |
 | 7 | Optional — register as a Coordinator specialist | not started |
 
 ## Quickstart (Phase 0 spike)

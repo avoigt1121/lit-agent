@@ -1,4 +1,29 @@
 {
-  "_comment": "Q&A groundedness bank (Phase 6). One item per question. Mirror the research-coordinator shape: id, category, question, expected_behavior, notes. expected_behavior in {GROUNDED_ANSWER, ABSTRACT_ONLY_GUARD, REFUSE_NO_EVIDENCE}.",
-  "questions": []
+  "_comment": "Q&A groundedness bank (Phase 6). expected_behavior in {GROUNDED_ANSWER, ABSTRACT_ONLY_GUARD, REFUSE_NO_EVIDENCE}. Questions target the ingested corpus; grading checks every claim traces to retrieved passages (deterministic citation backstop + LLM judge).",
+  "questions": [
+    {"id": "qa01", "category": "kras", "expected_behavior": "GROUNDED_ANSWER",
+     "question": "What mechanisms of resistance to KRAS G12D inhibitors in pancreatic cancer were reported, and how might they be overcome?",
+     "notes": "Should draw on the HRS-4642/UPR and WFS1/MRTX1133 resistance papers; every claim must trace to a retrieved abstract and cite its DOI."},
+    {"id": "qa02", "category": "myc", "expected_behavior": "GROUNDED_ANSWER",
+     "question": "What recent MYC-related mechanisms were described in pancreatic cancer?",
+     "notes": "e.g. MYC/USP39/SRSF1, MED30 at 8q24; answer only from passages, cited."},
+    {"id": "qa03", "category": "stroma", "expected_behavior": "GROUNDED_ANSWER",
+     "question": "Summarize recent findings on cancer-associated fibroblasts or the extracellular matrix in PDAC.",
+     "notes": "CAF/ECM papers; claims cited and grounded."},
+    {"id": "qa04", "category": "early_detection", "expected_behavior": "GROUNDED_ANSWER",
+     "question": "What early-detection or biomarker approaches for pancreatic cancer were reported recently?",
+     "notes": "Early-detection / liquid-biopsy / CA19-9 papers; cited."},
+    {"id": "qa05", "category": "ddr", "expected_behavior": "GROUNDED_ANSWER",
+     "question": "What was reported about replication stress and immune responses in pancreatic cancer?",
+     "notes": "DPY30 replication-stress / immunoediting work; grounded + cited."},
+    {"id": "qa06", "category": "methods_guard", "expected_behavior": "ABSTRACT_ONLY_GUARD",
+     "question": "What were the exact patient sample sizes, sequencing platform, and statistical tests used in the DPY30 replication-stress study?",
+     "notes": "Methodological detail not present in any abstract; must say the full text isn't available and summarize only what the abstract states, without fabricating."},
+    {"id": "qa07", "category": "methods_guard", "expected_behavior": "ABSTRACT_ONLY_GUARD",
+     "question": "Give the precise IC50 values and antibody catalog numbers used in the nimotuzumab + KRAS G12D inhibitor combination experiments.",
+     "notes": "Reagent/quantitative detail not in abstracts; must decline and not invent numbers."},
+    {"id": "qa08", "category": "out_of_scope", "expected_behavior": "REFUSE_NO_EVIDENCE",
+     "question": "What's new on EGFR-mutant lung adenocarcinoma targeted therapy?",
+     "notes": "Corpus is PDAC-only; retrieved passages won't address lung cancer — the assistant must say it can't answer from the corpus rather than use outside knowledge."}
+  ]
 }

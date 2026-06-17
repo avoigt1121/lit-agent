@@ -1,4 +1,149 @@
 {
-  "_comment": "Labeled digest items for relevance-precision grading (Phase 6). One item per paper with a human label of whether it is genuinely of interest to the BCC. Item: doi, title, abstract, expected_focus_areas, is_relevant (bool), notes.",
-  "items": []
+  "_comment": "Labeled digest items for relevance-precision grading (Phase 6). is_relevant \u27fa belongs in the digest under >=1 focus area. Labels are PROVISIONAL seed judgments \u2014 replace with BCC-confirmed labels for a real metric.",
+  "items": [
+    {
+      "id": "rel01",
+      "doi": "10.1158/1541-7786.mcr-25-1104",
+      "title": "MYC-Mediated USP39 Upregulation Stabilizes SRSF1 in Pancreatic Cancer.",
+      "abstract": "Pancreatic ductal adenocarcinoma (PDAC) is a highly lethal malignancy primarily driven by oncogenic KRAS signaling. The splicing factor SRSF1 plays a key oncogenic role in PDAC through reciprocal cross-interactions with KRAS signaling. However, the mechanisms regulating SRSF1 protein stability remain poorly understood. Here, we identify the deubiquitinase USP39 as a critical regulator of SRSF1 stability. It interacts with SRSF1 in an RNA-independent manner and suppresses its ubiquitination. USP39 is upregulated in PDAC and correlates with poor patient prognosis. Functional analyses demonstrate that USP39 promotes PDAC cell progression, in part through stabilization of SRSF1. Mechanistically, MYC activates USP39 transcription through direct promoter binding. These findings define a MYC-USP39-SRSF1 regulatory axis that integrates transcriptional and post-translational mechanisms in PDAC and suggest USP39 as a potential therapeutic target. Implications: USP39 functions as a central regulator that integrates transcriptional and post-translational regulation in pancreatic cancer through the MYC-USP39-SRSF1 axis and represents a potential therapeutic target.",
+      "is_relevant": true,
+      "expected_focus_areas": [
+        "myc"
+      ],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel02",
+      "doi": "10.1038/s41698-026-01553-4",
+      "title": "Targeting WFS1 overcomes KRAS<sup>G12D</sup> dependency and adaptive resistance to KRAS inhibition in pancreatic cancer.",
+      "abstract": "KRASG12D-driven pancreatic ductal adenocarcinoma (PDAC) remains a therapeutic challenge characterized by limited treatment options. While MRTX1133, a potent and selective KRASG12D inhibitor, is currently under clinical evaluation, the emergence of acquired resistance restricts its long-term therapeutic efficacy. In this study, we identified Wolfram syndrome 1 (WFS1) as a potential molecular vulnerability in KRASG12D-driven PDAC. Our findings suggest that WFS1 expression is upregulated following KRASG12D activation and may promote tumorigenesis and metastasis. Moreover, WFS1 expression was further elevated in tumors resistant to MRTX1133, independently of KRAS activation status. Inhibition of WFS1 partially restored sensitivity to MRTX1133 in resistant tumors by inducing excessive and sustained activation of the unfolded protein response (UPR), subsequently triggering apoptosis. Further exploration revealed that, while WFS1 is regulated by the MAPK and PI3K/AKT pathways in MRTX1133-sensitive cells, acquired resistance is associated with downregulation of the E3 ubiquitin ligase Smurf1, leading to increased WFS1 protein stability. Overall, these results highlight WFS1 as an adaptive factor and potential therapeutic target in KRASG12D-driven malignancies, offering a novel approach to enhance the efficacy of KRASG12D inhibitors and overcome acquired resistance.",
+      "is_relevant": true,
+      "expected_focus_areas": [
+        "kras_ras_mapk"
+      ],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel03",
+      "doi": "10.1038/s41389-026-00634-0",
+      "title": "CAF-derived PTGDS drives pancreatic cancer neuroendocrine differentiation and chemoresistance via PAQR9-MAPK.",
+      "abstract": "The tumor microenvironment, particularly cancer-associated fibroblasts (CAFs), critically influences pancreatic ductal adenocarcinoma (PDAC) progression. Neuroendocrine differentiation (NED) is associated with aggressive tumor behavior and therapy resistance in multiple malignancies, yet its regulation within the PDAC environment is poorly characterized. Through integrated analysis of clinical specimens and transcriptomic datasets, we identified significant enrichment of NED markers correlating with poor patient outcomes. Single-cell RNA sequencing further identified Glycoprotein prostaglandin D2 synthase (PTGDS) as a CAF-derived factor potentially driving NED. Functional studies demonstrated that PTGDS secreted by CAFs robustly induced NED while enhancing proliferation, invasion, migration, and gemcitabine resistance in pancreatic cancer cells. Mechanistically, we established that PTGDS activates MAPK signaling through its membrane receptor PAQR9, and the pharmacological inhibition of MAPK signaling or knockdown of PAQR9 effectively reversed PTGDS-induced malignant phenotypes. These findings reveal a novel CAFs/PTGDS-PAQR9-MAPK signaling axis that promotes NED and drives PDAC progression, offering new therapeutic opportunities to overcome stromal-mediated chemoresistance.",
+      "is_relevant": true,
+      "expected_focus_areas": [
+        "stroma_tme"
+      ],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel04",
+      "doi": "10.1016/j.ccell.2026.05.009",
+      "title": "STING unlocks CD4\u207a T cell immunity in pancreatic cancer.",
+      "abstract": "Pancreatic ductal adenocarcinomas (PDACs) are lethal cancers resistant to immunotherapies. In this issue of Cancer Cell, Kureshi et al. show that combining checkpoint blockade with STING-mediated innate immune stimulation unlocks cDC2-driven CD4<sup>+</sup> T cell immunity in mice, promoting PDAC immune control. This cellular axis may be exploited for PDAC therapy.",
+      "is_relevant": true,
+      "expected_focus_areas": [
+        "immunology_immunotherapy"
+      ],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel05",
+      "doi": "10.1002/ijc.70592",
+      "title": "Pancreatic Cancer Early Detection Biomarkers for High-Risk Individuals: Insights From the PRECEDE Consortium.",
+      "abstract": "Pancreatic ductal adenocarcinoma (PDAC) remains one of the deadliest cancers due to its asymptomatic progression, late-stage diagnosis, and treatment resistance. Efforts in early detection have centered on identifying imaging features and liquid biopsy biomarkers capable of detecting PDAC and its high-grade precursors before clinical symptoms arise in patients at elevated risk of PDAC development. Classical imaging-based surveillance strategies, aligned with current guidelines, form the foundation of screening high-risk individuals, while organ-specific fluid analyses-such as cyst fluid and pancreatic juice-offer promising complementary tools with enhanced specificity. Recent advances in radiomics, liquid biopsy, microbiome, and multi-omics profiling are expanding the frontier of early detection. Despite advances, significant challenges persist. Precursor lesions are difficult to non-invasively diagnose; are not radiologically or endosonographically visible, or cannot be definitively graded prior to resection. Though biomarkers show promise for early detection, they present unique challenges: early-stage neoplasias release low levels of many biomarkers and thresholds for these biomarkers that define malignant transformation-and thus guide surgical intervention-remain poorly established. Multi-institutional initiatives like the Pancreatic Cancer Early Detection consortium (PRECEDE) are critical to bridging discovery and clinical translation. Our international cohort study of high-risk individuals was designed to discover and validate diagnostic biomarkers according to the PROBE study design. Continued collaboration, technological integration, and patient-centered approaches are essential to transform early detection research into tangible survival benefits for those at risk of PDAC.",
+      "is_relevant": true,
+      "expected_focus_areas": [
+        "early_detection_biomarkers"
+      ],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel06",
+      "doi": "10.1016/j.dld.2026.05.011",
+      "title": "Current practices, barriers and facilitators toward simultaneous care management in patients affected by pancreatic adenocarcinoma: An Italian cross-sectional survey.",
+      "abstract": "<h4>Background</h4>In pancreatic ductal adenocarcinoma (PDAC), early integration of simultaneous care plays a key role in maintaining function, improving treatment tolerance, and aligning care with patient preferences.<h4>Aims</h4>This national survey, promoted by the Italian Association for the Study of the Pancreas (AISP), assessed current practices, barriers, and facilitators related to supportive and simultaneous care in Italian centers managing pancreatic cancer.<h4>Methods</h4>Between April and July 2024, a 19-item cross-sectional online survey, including a clinical vignette, was distributed to healthcare professionals involved in PDAC care. The questionnaire explored screening, counseling, and referral practices for nutrition, physical activity, and psycho-oncological support, as well as the organization of simultaneous care pathways. The vignette evaluated regret of omission and commission regarding multimodal prehabilitation (0-100 scale).<h4>Results</h4>Overall, 191 professionals responded (94.7% physicians; 65% AISP members). Although most acknowledged the value of simultaneous care, implementation was inconsistent: 70% routinely provided nutritional advice, but only 20% screened for physical activity or psychological distress. Younger clinicians showed greater awareness and readiness to integrate supportive care. Main barriers were limited funding (22%), insufficient knowledge (21%), and lack of dedicated specialists (19%). Key facilitators included supportive care experts within teams (30%) and structured training (27%). Regret of omission (median 60) exceeded regret of commission (median 10).<h4>Conclusions</h4>Standardized simultaneous care pathways, structured education, and dedicated personnel are urgently needed to improve pancreatic cancer care in Italy.",
+      "is_relevant": true,
+      "expected_focus_areas": [
+        "cachexia_resiliency"
+      ],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel07",
+      "doi": "10.1158/0008-5472.can-25-3849",
+      "title": "DPY30 Is an Epigenetic Decoupler Linking Replication Stress to Immunoediting in Pancreatic Cancer.",
+      "abstract": "UNLABELLED: Perturbations in DNA replication can impair fork stability, resulting in cumulative DNA replication stress. As activation of the DNA stress response elicits immunomodulatory effects, understanding the cross-talk between the epigenetic control of replication fork stability and the recruitment of immune cells may represent an actionable avenue to potentiate the sensitivity of tumors to immunotherapy. In this study, we identified DPY30, a member of the histone methyltransferase WRAD/COMPASS complex, as a replication stress-specific epigenetic modifier in pancreatic ductal adenocarcinoma (PDAC). Although other WRAD components broadly regulate transcription, DPY30 distinctively promoted H3K4me3 deposition at stressed DNA replication forks to safeguard DNA replication stability without altering global gene expression. Loss of DPY30 destabilized stalled forks causing fork degradation, chromosomal instability, and inflammation without reducing cancer cell proliferation. Consequently, T-cell infiltration induced by DPY30 deficiency promoted a tumor response to immune checkpoint blockade (ICB). In patients with PDAC, high DPY30 tumor expression was associated with poorer ICB response, underscoring the potential of DPY30 as a predictive biomarker of immunotherapy response. Together, this study redefines our understanding of a replication stress-specific epigenetic code, unveiling DPY30 as a chromatin switch essential for stressed fork stability and a potential therapeutic target.\nSIGNIFICANCE: Loss of DPY30, a replication stress-specific epigenetic regulator that stabilizes stressed forks, promotes genomic instability, inflammation, and immunotherapy sensitivity, highlighting DPY30 as predictive biomarker and therapeutic target in pancreatic cancer. See related commentary by Thakur and Oberdoerffer, p. 2831.",
+      "is_relevant": true,
+      "expected_focus_areas": [
+        "ddr_repair"
+      ],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel08",
+      "doi": "10.1038/s41467-026-73189-8",
+      "title": "Oncogenic KRAS-driven type I interferon signalling primes pancreatic cancer for necroptosis.",
+      "abstract": "Pancreatic ductal adenocarcinoma (PDAC) is projected to become the second leading cause of cancer-related death within this decade. Here, we show that its major driver oncogene KRAS activates the cGAS-STING-TBK1 axis, inducing a type I interferon (IFN) response that primes PDAC cells for necroptosis. Using genetically engineered mouse models, we find that cancer cell-specific deletion of caspase-8 is sufficient to trigger necroptotic cell death, eliminating most pancreatic precursor lesions. Mechanistically, KRAS-driven IFN signalling induces ISGF3-dependent expression of necroptosis-related interferon-stimulated genes, including MLKL. This renders PDAC cells selectively vulnerable to necroptosis upon caspase-8 inhibition. Therapeutically, pharmacologic caspase inhibition reduces tumour burden in aggressive PDAC models and human patient-derived organoids. A pan-cancer transcriptomic analysis links necroptosis gene expression with Ras pathway activity and IFN signatures across multiple tumour types. These findings reveal a KRAS-induced IFN program that sensitises tumour cells to necroptosis, highlighting a therapeutic vulnerability in PDAC with broader relevance across IFN-activated cancers.",
+      "is_relevant": true,
+      "expected_focus_areas": [
+        "kras_ras_mapk"
+      ],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel09",
+      "doi": "10.1002/jhbp.70142",
+      "title": "Familial Pancreatic Cancer at a Tertiary Referral Center: Incidence and Clinical Characteristics in Korea.",
+      "abstract": "BACKGROUND: Familial pancreatic cancer (FPC), defined as kindreds with at least two first-degree relatives affected by pancreatic cancer (PC), represents a high-risk subgroup. However, data on its incidence and clinical characteristics in Korea remain limited. This study evaluated the incidence, clinicopathologic features, and prognostic impact of FPC at a tertiary referral center.\nMETHODS: We retrospectively analyzed 5 858 patients diagnosed with pancreatic ductal adenocarcinoma between 2008 and 2019. FPC was defined as at least one pair of first-degree relatives with PC. Clinicopathologic characteristics and overall survival (OS) were compared between FPC and non-FPC groups. Propensity score matching (PSM) was performed using age, sex, and clinical stage. Survival was assessed using Kaplan-Meier analysis and Cox regression.\nRESULTS: FPC was identified in 208 patients (3.55%) and in 5.0% of those undergoing curative-intent surgery (1 536 patients). Before PSM, FPC patients were less likely to present with metastatic disease and more likely to receive surgery and chemotherapy. After PSM, differences were not significant. OS was comparable between FPC and non-FPC groups, and FPC was not an independent prognostic factor.\nCONCLUSIONS: In this large Korean cohort, FPC incidence and survival outcomes were comparable to those of non-FPC cases.",
+      "is_relevant": true,
+      "expected_focus_areas": [
+        "early_detection_biomarkers"
+      ],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel10",
+      "doi": "10.1007/s00261-026-05596-w",
+      "title": "Super-resolution deep learning reconstruction improves the depiction of peripancreatic arteries and image quality in pancreatic cancer CT.",
+      "abstract": "<h4>Purpose</h4>Accurate identification of peripancreatic arteries in pancreatic ductal adenocarcinoma (PDAC) is essential for determining surgical strategy and prognosis. This study compared super-resolution deep learning reconstruction (SR-DLR) with normal-resolution deep learning reconstruction (NR-DLR) and hybrid iterative reconstruction (HIR) in the depiction of peripancreatic arteries in patients with PDAC undergoing pancreatic dynamic CT.<h4>Methods</h4>This retrospective study included 40 patients (mean age, 70.8\u2009\u00b1\u20099.3 years) with pathologically confirmed PDAC who underwent pancreatic dynamic CT. Images were reconstructed using SR-DLR, NR-DLR, and HIR. In quantitative image analyses, CT attenuation, image noise, contrast-to-noise ratio (CNR), edge rise slope (ERS), and edge rise distance (ERD) were assessed. In qualitative image analyses, five radiologists independently evaluated arterial depiction of major arteries and small peripancreatic arteries, tumor-vessel interface, image noise, image sharpness, diagnostic acceptability, and tumor conspicuity. Statistical analyses were performed using paired t-tests and the Wilcoxon signed-rank test with Bonferroni correction.<h4>Results</h4>SR-DLR showed higher CT attenuation, lower image noise, and higher CNR than NR-DLR and HIR (all p\u2009<\u20090.001). For both the superior mesenteric artery and pancreatic parenchyma, ERS was higher with SR-DLR than with NR-DLR and HIR (all p\u2009\u2264\u20090.002), whereas ERD was lower than with NR-DLR and HIR (all p\u2009\u2264\u20090.001). In qualitative image analyses, SR-DLR achieved the highest scores for small peripancreatic arteries and all qualitative items except for the depiction of major peripancreatic arteries (p\u2009<\u20090.001).<h4>Conclusion</h4>SR-DLR improved quantitative image quality and enhanced the qualitative depiction of small peripancreatic arteries and the tumor-vessel interface in pancreatic dynamic CT for patients with PDAC.",
+      "is_relevant": false,
+      "expected_focus_areas": [],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel11",
+      "doi": "10.1093/jscr/rjag443",
+      "title": "Large pancreatic acinar cell carcinoma mass excision.",
+      "abstract": "Pancreatic acinar cell carcinomas are rare malignant exocrine neoplasms. Due to their rarity, current treatments are being researched. Most tumors range from 5 to 10\u00a0cm in size. This case report describes a 15\u00a0cm tumor that was resected en bloc with no local recurrence at 2\u00a0months.",
+      "is_relevant": false,
+      "expected_focus_areas": [],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel12",
+      "doi": "10.1007/s00535-026-02457-7",
+      "title": "HOXC9 enhances cholesterol metabolism and malignancy in pancreatic ductal adenocarcinoma through ITGA10/FAK/PI3K/CREB-dependent HMGCR activation.",
+      "abstract": "<h4>Background</h4>Pancreatic ductal adenocarcinoma (PDAC) has a poor prognosis. Dysregulated cholesterol metabolism contributes to tumor progression, but its regulatory mechanisms in PDAC are unclear. This study explored the role and mechanism of homeobox C9 (HOXC9) in cholesterol regulation and PDAC development.<h4>Methods</h4>HOXC9 was identified by bioinformatics as a key cholesterol metabolism gene in PDAC. Its expression was validated via qRT-PCR, Western blot, and immunohistochemistry, while cholesterol were measured using microassay and Filipin III staining. In vitro assays and subcutaneous tumor models in nude mice were used to assess its functional roles. RNA-seq, ChIP-qPCR, and dual-luciferase reporter assays explored molecular mechanisms.<h4>Results</h4>HOXC9 was identified as a key cholesterol metabolism-related transcription factor in PDAC. High-throughput data analysis based on TCGA databases further revealed that HOXC9 was highly expressed in PDAC tissues and associated with dismal prognosis. Clinically, HOXC9 upregulation correlates positively with tumor cholesterol, advanced stage, and reduced survival. Functionally, HOXC9 promotes PDAC cell proliferation, migration, and invasion in a cholesterol-dependent manner. In vivo, HOXC9 knockdown suppressed tumor growth and intratumoral cholesterol in nude mice, an effect reversible by high-cholesterol diet. Mechanistically, transcriptome sequencing highlighted the PI3K-Akt pathway as a key downstream target. HOXC9 transcriptionally activates ITGA10, which upregulates HMGCR via the FAK/PI3K/CREB, thereby driving cholesterol metabolism and tumor progression.<h4>Conclusions</h4>HOXC9 may be a key transcriptional regulator of cholesterol metabolism in PDAC, promoting malignant progression by activating the ITGA10/FAK/PI3K/CREB to regulate HMGCR-mediated cholesterol synthesis. The essential role of the HOXC9-ITGA10-cholesterol axis in PDAC progression offers a novel potential target for therapy.",
+      "is_relevant": false,
+      "expected_focus_areas": [],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel13",
+      "doi": "10.1093/oncolo/oyag232",
+      "title": "A phase II clinical trial of albumin-bound paclitaxel, cisplatin, gemcitabine (NABPLAGEM) and paricalcitol as neoadjuvant therapy in pancreatic cancer.",
+      "abstract": "<h4>Background</h4>For patients with untreated pancreatic ductal adenocarcinoma (PDAC), chemotherapy before surgery (\"neoadjuvant therapy\") has shown benefit in reducing recurrence and prolonging survival. Targeting the vitamin D receptor (VDR) with analogs such as paricalcitol may improve chemotherapy effectiveness. This study evaluated the efficacy and safety of neoadjuvant albumin-bound paclitaxel (nab-paclitaxel) plus cisplatin plus gemcitabine (NABPLAGEM) plus paricalcitol (NCT03138720).<h4>Methods</h4>Participants were \u226518 years, had stage I-III PDAC without prior chemotherapy or radiation, Karnofsky Performance Status \u226570, and elevated CA 19-9. Study treatment included nab-paclitaxel (125\u2009mg/m2), cisplatin (25\u2009mg/m2), gemcitabine (1000\u2009mg/m2), and paricalcitol (25\u2009mcg) on days 1 and 8 of a 21-day cycle for up to six months. The primary outcome was CA 19-9 normalization. Secondary outcomes included margin-negative resection (R0), pathologic complete response (pCR), radiologic response, safety, and survival. Microbiome was analyzed as an exploratory outcome.<h4>Results</h4>Thirty-two participants were enrolled with median age 69.4 years, 56.2% male, and 93.8% white. Patients had resectable (cohort A, n\u2009=\u200910) and borderline resectable/locally advanced (cohort B, n\u2009=\u200922) tumors. CA 19-9 normalization occurred in 14 patients (43.8%). Two patients (6.2%) achieved pCR, and 19 (59.4%) achieved R0. Complete or partial radiologic response occurred in 39.3% of patients. Adverse events included grade 3-4 anemia (43.8%) and thrombocytopenia (59.4%). Median (95% CI) overall survival was 43.2 (7.5-upper bound not achieved) and 18.4 (10.9-41.2) months for cohorts A and B, respectively.<h4>Conclusion</h4>Neoadjuvant NABPLAGEM plus paricalcitol demonstrated a high CA 19-9 normalization rate and was fairly well tolerated.",
+      "is_relevant": false,
+      "expected_focus_areas": [],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    },
+    {
+      "id": "rel14",
+      "doi": "10.1186/s12967-026-08370-0",
+      "title": "CT-based habitat analysis combined with multi-channel deep learning for predicting early recurrence after pancreatic cancer resection: a multicenter study.",
+      "abstract": "<h4>Background</h4>Pancreatic ductal adenocarcinoma (PDAC) has a poor prognosis, with high early recurrence rates after curative resection. Current prediction methods, based on clinicopathological features or conventional radiomics, often fail to capture intratumoral heterogeneity (ITH), a key driver of recurrence. Computed tomography (CT)-based habitat analysis quantifies ITH by identifying phenotypically distinct tumor subregions, while deep learning (DL) can extract complex imaging patterns. Their integration may improve recurrence risk assessment. This study aimed to develop and validate a fusion model that integrates CT-based habitat analysis, a 2.5D convolutional neural network (CNN)-Transformer DL framework, and clinicopathological features to noninvasively predict early recurrence (within one year) risk after PDAC resection.<h4>Methods</h4>In this multicenter retrospective study, 346 patients with resected PDAC were included from four institutions. Tumors were segmented into three habitat subregions via unsupervised K\u2011means clustering. Radiomic features from these subregions constructed the HabitatAll model. In parallel, a DL model was built using a 2.5D CNN-Transformer architecture. Predictive scores from both models were integrated with key clinicopathological variables through ridge regression to develop the fusion model (HADLC). Model interpretability was examined using SHAP (SHapley Additive exPlanations) and Grad\u2011CAM (Gradient\u2011weighted Class Activation Mapping). Model performance was evaluated using the area under the receiver operating characteristic curve (AUC), accuracy, calibration curves, and decision curve analysis (DCA).<h4>Results</h4>The HADLC model showed superior predictive ability, achieving AUCs of 0.977 (training), 0.916 (internal test), and 0.838-0.866 (external validation), outperforming the standalone HabitatAll, DL, and Clinic models. It demonstrated good calibration and provided higher net clinical benefit across most decision thresholds. Interpretability analyses revealed key imaging phenotypes linked to aggressive tumor biology.<h4>Conclusion</h4>The HADLC model effectively integrates multimodal information to accurately assess early postoperative recurrence risk in PDAC, providing a robust, non-invasive imaging biomarker to potentially guide personalized treatment.",
+      "is_relevant": false,
+      "expected_focus_areas": [],
+      "notes": "provisional label \u2014 needs BCC confirmation"
+    }
+  ]
 }
