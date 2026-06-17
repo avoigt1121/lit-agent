@@ -1,0 +1,36 @@
+# Phase 7 — research-coordinator registration entry for lit-agent.
+#
+# Paste this block under `agents:` in research-coordinator/agents.yaml AFTER
+# lit-agent is deployed to its HF Space (set hf_space to the real slug). See
+# ../INTEGRATION.md for the routing-prompt delta and the one small dispatch
+# change the coordinator needs (its current dispatch is DecoupleRpy-specific).
+
+- id: litagent
+  name: "Literature Review Agent"
+  description: >-
+    Grounded Q&A over recently published open-access PDAC literature: what's new
+    on a topic, summaries of recent findings, comparisons across papers — answered
+    strictly from retrieved abstracts with DOI citations. Does NOT run
+    transcriptomic computation (that is the DecoupleRpy agent).
+  hf_space: "anne-voigt/bcc-lit-agent"   # <-- set to the deployed lit-agent Space slug
+  trigger_keywords:
+    - "recent papers"
+    - "latest research"
+    - "literature"
+    - "what's new"
+    - "publications"
+    - "recent findings"
+    - "new studies"
+    - "any papers on"
+    - "review the literature"
+    - "what has been published"
+  capabilities:
+    - literature_qa
+    - recent_publications
+    - grounded_citations
+  # lit-agent exposes a SIMPLE one-shot endpoint (unlike DecoupleRpy's two-step
+  # /lambda + /interact_with_agent + /handle_continue). The coordinator dispatch
+  # should branch on this api.type — see INTEGRATION.md.
+  api:
+    type: simple_predict
+    api_name: "/ask"          # gradio_client: Client(hf_space).predict(question, api_name="/ask")

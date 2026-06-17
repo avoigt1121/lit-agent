@@ -43,7 +43,7 @@ app.py · ui.py   — HF Space (Phase 5)
 | 4 | Analytics — windows/deltas + cache | ✅ done |
 | 5 | Q&A Space — retrieve + grounded answer + guard (Gradio) | ✅ done |
 | 6 | Eval & harden — groundedness + relevance | ✅ done (Q&A 8/8 · relevance P100/R89) |
-| 7 | Optional — register as a Coordinator specialist | not started |
+| 7 | Optional — register as a Coordinator specialist | ✅ integration-ready (`/ask` endpoint + spec) |
 
 ## Quickstart (Phase 0 spike)
 

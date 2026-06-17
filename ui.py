@@ -106,6 +106,23 @@ class LitAgentUI:
             yield history, "", sources
 
     # ------------------------------------------------------------------
+    # Programmatic endpoint for other agents (e.g. the research-coordinator).
+    # Call via gradio_client: Client(space).predict(question, api_name="/ask")
+    # → a single grounded, DOI-cited answer string (non-streaming). This is the
+    # simple one-shot protocol lit-agent exposes for integration (Phase 7).
+    def ask(self, question: str) -> str:
+        if self._retriever is None:
+            return self._init_error or "Corpus unavailable."
+        if not question or not question.strip():
+            return "Please provide a question."
+        passages = self._retriever.retrieve(question, k=6)
+        if not passages:
+            return "No matching papers in the ingested PDAC corpus for that question."
+        if self._client is None:
+            return "No API key configured for synthesis. Most relevant passages:\n\n" + self._sources_md(passages)
+        return qa_answer.answer(question, passages, self._client)
+
+    # ------------------------------------------------------------------
     def build(self) -> gr.Blocks:
         with gr.Blocks(title="BCC PDAC Literature Q&A") as demo:
             gr.Markdown(
@@ -131,6 +148,12 @@ class LitAgentUI:
             outputs = [chatbot, msg, sources_panel]
             send.click(self._respond, inputs, outputs)
             msg.submit(self._respond, inputs, outputs)
+
+            # Hidden one-shot API for other agents: client.predict(q, api_name="/ask")
+            ask_q = gr.Textbox(visible=False)
+            ask_a = gr.Textbox(visible=False)
+            ask_btn = gr.Button(visible=False)
+            ask_btn.click(self.ask, inputs=ask_q, outputs=ask_a, api_name="ask")
         return demo
 
 
