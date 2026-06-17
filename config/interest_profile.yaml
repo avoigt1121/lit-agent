@@ -1,12 +1,19 @@
-# config/interest_profile.yaml — the BCC interest model (consumed in Phase 2).
+# config/interest_profile.yaml — the BCC interest model (consumed in Phase 2)
+# + the coverage-trend count queries (Phase 4 analytics backfill).
 #
 # Real BCC/Sears-lab focus areas (set 2026-06-17). The harvest query stays BROAD
 # (all PDAC, in sources.yaml); these areas are the layer on top that route papers
 # into the digest + analytics + (post-v1) per-area Space tabs.
 #
-# exemplar_dois are EMPTY for now — they're the highest-leverage tuning input
-# (they anchor the embedding classifier). Add 2-3 unambiguous papers per area, or
-# point Claude at a representative PubMed search per area to have them pulled.
+# Two query roles per area, kept separate on purpose:
+#   keywords     — free-text terms embedded for the digest's classifier (loose;
+#                  fine for embedding similarity).
+#   count_query  — a SPECIFIC Europe PMC boolean query used ONLY for the coverage
+#                  time-series (hitCount). Must be tight — generic terms like
+#                  "resistance" would inflate counts. Tune freely; it never
+#                  touches the digest classification.
+#
+# exemplar_dois are EMPTY for now — the highest-leverage classifier tuning input.
 
 audience_note: >
   Brenden-Colson Center for Pancreatic Care (OHSU, Sears & Brody labs) —
@@ -15,10 +22,6 @@ audience_note: >
   non-pancreatic cancers.
 
 # Classification + digest tuning (config, not code — change without redeploy).
-# Two-stage: embedding proposes `candidate_top_k` areas per paper, then (if an
-# Anthropic key is present) an LLM confirms which truly apply, or none. Absolute
-# cosine thresholds don't work here — every paper is PDAC text, so scores cluster;
-# `fallback_min_confidence` is only the crude key-free path.
 classification:
   candidate_top_k: 2             # embedding candidates per paper handed to the LLM confirm
   max_areas_per_paper: 2         # final multi-label cap after confirm
@@ -31,6 +34,7 @@ focus_areas:
     name: MYC
     keywords: [MYC, c-MYC, MYC stability, MYC phosphorylation, S62, T58, FBXW7,
                PP2A, Omomyc, MYC degradation, MYC amplification, MYC targets, MAX]
+    count_query: '(MYC OR "c-MYC" OR MYCN OR Omomyc)'
     exemplar_dois: []
     audience_note: >
       MYC regulation in PDAC — stability/phosphorylation (a Sears-lab signature),
@@ -40,6 +44,7 @@ focus_areas:
     name: HuR (ELAVL1)
     keywords: [HuR, ELAVL1, RNA-binding protein, mRNA stability, AU-rich element,
                ARE, post-transcriptional regulation, ribonucleoprotein, RNA stability]
+    count_query: '(HuR OR ELAVL1)'
     exemplar_dois: []
     audience_note: >
       HuR/ELAVL1 post-transcriptional regulation (a Brody-lab focus) — HuR target
@@ -49,6 +54,8 @@ focus_areas:
     name: KRAS / RAS–MAPK & RAS-targeted therapy
     keywords: [KRAS, G12D, G12C, G12V, pan-RAS, RAS, MAPK, MEK, ERK, SHP2, SOS1,
                RAF, sotorasib, adagrasib, MRTX1133, RMC-6236, RAS(ON), feedback, resistance]
+    count_query: '(KRAS OR G12D OR G12C OR "pan-RAS" OR SHP2 OR SOS1 OR sotorasib
+                   OR adagrasib OR MRTX1133 OR MEK OR ERK)'
     exemplar_dois: []
     audience_note: >
       KRAS-mutant PDAC mechanism, RAS-targeted inhibitors (G12D/G12C/pan-RAS),
@@ -59,6 +66,9 @@ focus_areas:
     keywords: [DNA damage response, DNA repair, BRCA1, BRCA2, PALB2, homologous
                recombination, HRD, PARP, PARP inhibitor, olaparib, PARG, replication
                stress, ATR, CHK1, WEE1, platinum, synthetic lethality]
+    count_query: '(BRCA1 OR BRCA2 OR PALB2 OR "homologous recombination" OR HRD OR
+                   PARP OR olaparib OR PARG OR "replication stress" OR ATR OR CHK1
+                   OR WEE1 OR "DNA damage response" OR "DNA repair")'
     exemplar_dois: []
     audience_note: >
       DDR/repair vulnerabilities — BRCA/PALB2/HRD, PARP/PARG inhibition,
@@ -69,6 +79,9 @@ focus_areas:
     keywords: [immune evasion, T cell, checkpoint, PD-1, PD-L1, CTLA-4, CAR-T,
                vaccine, neoantigen, myeloid, macrophage, MDSC, Treg, immunotherapy,
                cytokine, antigen presentation]
+    count_query: '(immunotherapy OR "immune evasion" OR "T cell" OR checkpoint OR
+                   "PD-1" OR "PD-L1" OR "CTLA-4" OR "CAR-T" OR neoantigen OR
+                   macrophage OR MDSC OR Treg)'
     exemplar_dois: []
     audience_note: >
       PDAC immune landscape and immunotherapy — checkpoint blockade, cellular
@@ -79,6 +92,9 @@ focus_areas:
     keywords: [stroma, CAF, cancer-associated fibroblast, desmoplasia, extracellular
                matrix, ECM, hyaluronan, collagen, myCAF, iCAF, apCAF, fibrosis,
                stellate cell, tumor microenvironment, TME]
+    count_query: '(stroma OR CAF OR "cancer-associated fibroblast" OR desmoplasia OR
+                   "extracellular matrix" OR hyaluronan OR collagen OR "stellate cell"
+                   OR "tumor microenvironment")'
     exemplar_dois: []
     audience_note: >
       Stromal/desmoplastic biology — CAF subsets (myCAF/iCAF/apCAF), ECM
@@ -89,6 +105,9 @@ focus_areas:
     keywords: [early detection, biomarker, liquid biopsy, cfDNA, ctDNA, CA19-9,
                exosome, circulating tumor cell, CTC, screening, surveillance,
                high-risk, IPMN, PanIN, cyst]
+    count_query: '("early detection" OR biomarker OR "liquid biopsy" OR cfDNA OR
+                   ctDNA OR "CA19-9" OR exosome OR "circulating tumor cell" OR
+                   screening OR IPMN OR PanIN)'
     exemplar_dois: []
     audience_note: >
       Detection/surveillance and biomarkers — liquid biopsy (cfDNA/ctDNA/CTC/
@@ -99,6 +118,9 @@ focus_areas:
     keywords: [cachexia, muscle wasting, sarcopenia, weight loss, anorexia, GDF15,
                body composition, nutrition, quality of life, frailty, resilience,
                supportive care, exercise, performance status]
+    count_query: '(cachexia OR "muscle wasting" OR sarcopenia OR "weight loss" OR
+                   anorexia OR GDF15 OR "quality of life" OR frailty OR
+                   "supportive care" OR "body composition")'
     exemplar_dois: []
     audience_note: >
       Cachexia and patient resiliency — muscle wasting/sarcopenia, metabolic/

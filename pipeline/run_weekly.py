@@ -33,7 +33,7 @@ from pipeline.normalize import normalize_records
 from pipeline.score import Embedder, classify_and_score, embed_corpus, load_interest_profile
 from pipeline.digest import (build_digest_html, write_dry_run, load_recipients,
                              default_subject, deliver, send_test)
-from pipeline import analytics
+from pipeline import analytics, backfill
 from store import db
 from store.vectors import VectorIndex
 
@@ -57,6 +57,15 @@ def _maybe_client():
     except Exception as exc:  # noqa: BLE001
         logger.warning("Anthropic unavailable (%s) — embedding-only classification.", exc)
         return None
+
+
+def _send_mode(args) -> str:
+    """Which banner the rendered digest carries, from the run's send disposition."""
+    if args.test_send:
+        return "test"
+    if not args.no_send and os.environ.get("SEND_LIVE") == "1":
+        return "live"
+    return "dry_run"
 
 
 def build_corpus(records: list[dict], window: dict, *, db_path: Path = DEFAULT_DB,
@@ -99,16 +108,18 @@ def build_corpus(records: list[dict], window: dict, *, db_path: Path = DEFAULT_D
             "index_path": str(index_path) if do_embed else None}
 
 
-def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None) -> tuple[Path, str]:
-    """Render the dry-run digest + cache analytics. Returns (path, html)."""
+def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
+                mode: str = "dry_run") -> tuple[Path, str]:
+    """Render the digest (banner per `mode`) + cache analytics. Returns (path, html)."""
     conn = db.connect(db_path)
     papers = list(db.iter_papers(conn))
     profile = load_interest_profile(PROFILE_PATH)
-    adata = analytics.compute(conn)
+    adata = analytics.compute_trends(conn)
     conn.close()
     analytics.cache(adata, ROOT / "data" / "analytics.json")
-    footer = analytics.footer_html(adata, profile, "week")
-    html_str = build_digest_html(papers, profile, window, client=client, analytics_html=footer)
+    footer = analytics.footer_html(adata, profile)
+    html_str = build_digest_html(papers, profile, window, client=client,
+                                 analytics_html=footer, mode=mode)
     path = write_dry_run(html_str, out_dir=ROOT / "out", date_str=window.get("to"))
     return path, html_str
 
@@ -197,6 +208,7 @@ def main() -> None:
                     help="Send one test email to ADDR (explicit; needs provider key + EMAIL_SENDER).")
     ap.add_argument("--no-send", action="store_true", help="Render the digest but never attempt delivery.")
     ap.add_argument("--no-sync", action="store_true", help="Skip the HF Dataset pull/push.")
+    ap.add_argument("--no-coverage", action="store_true", help="Skip refreshing the coverage trend series.")
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--index", type=Path, default=DEFAULT_INDEX)
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -212,12 +224,13 @@ def main() -> None:
         pass
 
     client = None if args.no_embed else _maybe_client()
+    mode = _send_mode(args)
 
     # --- digest-only: re-render from the existing corpus, optionally deliver ---
     if args.digest_only:
         window = _latest_window(args.db)
-        path, html_str = make_digest(window, db_path=args.db, client=client)
-        print(f"Digest (dry-run): {path}")
+        path, html_str = make_digest(window, db_path=args.db, client=client, mode=mode)
+        print(f"Digest [{mode}]: {path}")
         if not args.no_digest:
             _deliver_step(window, html_str, test_send=args.test_send, no_send=args.no_send)
         return
@@ -248,9 +261,15 @@ def main() -> None:
     if result["index_path"]:
         print(f"Index: {result['index_path']}")
 
+    if not args.no_coverage:
+        try:
+            backfill.update_current_week(args.db)
+        except Exception as exc:  # noqa: BLE001 — don't fail the run on a coverage hiccup
+            logger.warning("coverage update skipped: %s", exc)
+
     if not args.no_digest and not args.no_embed:
-        path, html_str = make_digest(window, db_path=args.db, client=client)
-        print(f"Digest (dry-run): {path}")
+        path, html_str = make_digest(window, db_path=args.db, client=client, mode=mode)
+        print(f"Digest [{mode}]: {path}")
         _deliver_step(window, html_str, test_send=args.test_send, no_send=args.no_send,
                       n_new=result["n_new"])
 

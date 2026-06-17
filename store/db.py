@@ -25,7 +25,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Scalar columns stored as their own SQLite columns; everything else in the
 # normalized record is JSON-encoded into the matching column.
@@ -90,6 +90,18 @@ def init_schema(conn: sqlite3.Connection) -> None:
             n_new       INTEGER,
             n_emailed   INTEGER
         );
+
+        CREATE TABLE IF NOT EXISTS coverage_counts (
+            granularity  TEXT NOT NULL,   -- 'week' (rolled up to month/year in analytics)
+            period_start TEXT NOT NULL,   -- ISO date, inclusive
+            period_end   TEXT NOT NULL,   -- ISO date, inclusive
+            focus_area   TEXT NOT NULL,   -- focus-area id, or '_total'
+            count        INTEGER,
+            source       TEXT,            -- e.g. 'europepmc'
+            method       TEXT,            -- e.g. 'keyword_hitcount'
+            PRIMARY KEY (granularity, period_start, focus_area, source)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cov_area ON coverage_counts(focus_area, period_start);
 
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
         """
@@ -202,3 +214,39 @@ def papers_first_seen_between(conn: sqlite3.Connection, start: str, end: str) ->
         (start, end),
     )
     return [record_to_dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Coverage counts (the keyword-based trend time-series; see pipeline/backfill.py)
+# ---------------------------------------------------------------------------
+
+def upsert_coverage(conn: sqlite3.Connection, rows: list[dict]) -> None:
+    """Idempotent upsert of coverage rows (re-running a period overwrites its count)."""
+    conn.executemany(
+        "INSERT INTO coverage_counts"
+        "(granularity, period_start, period_end, focus_area, count, source, method) "
+        "VALUES(:granularity, :period_start, :period_end, :focus_area, :count, :source, :method) "
+        "ON CONFLICT(granularity, period_start, focus_area, source) "
+        "DO UPDATE SET count=excluded.count, period_end=excluded.period_end, method=excluded.method",
+        rows,
+    )
+    conn.commit()
+
+
+def coverage_periods_present(conn: sqlite3.Connection, granularity: str, source: str) -> set[str]:
+    """period_start values already stored (for resumable backfills)."""
+    rows = conn.execute(
+        "SELECT DISTINCT period_start FROM coverage_counts WHERE granularity=? AND source=?",
+        (granularity, source),
+    )
+    return {r[0] for r in rows}
+
+
+def get_coverage(conn: sqlite3.Connection, focus_area: str, granularity: str = "week") -> list[dict]:
+    """Ordered weekly series for one area (or '_total'): [{period_start, period_end, count}]."""
+    rows = conn.execute(
+        "SELECT period_start, period_end, count FROM coverage_counts "
+        "WHERE focus_area=? AND granularity=? ORDER BY period_start",
+        (focus_area, granularity),
+    )
+    return [{"period_start": r[0], "period_end": r[1], "count": r[2]} for r in rows]

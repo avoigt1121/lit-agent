@@ -127,8 +127,13 @@ def _item_html(rec: dict, note: str) -> str:
 
 
 def build_digest_html(papers: list[dict], profile: dict, window: dict,
-                      client=None, analytics_html: str | None = None) -> str:
-    """Render the weekly digest HTML from classified papers (top-N per area)."""
+                      client=None, analytics_html: str | None = None,
+                      mode: str = "dry_run") -> str:
+    """Render the weekly digest HTML from classified papers (top-N per area).
+
+    mode controls the banner: "dry_run" (yellow not-sent notice), "test"
+    (preview-to-one-address notice), or "live" (no banner — the clean digest
+    recipients receive)."""
     top_n = int(profile.get("digest", {}).get("top_n_per_area", 6))
     confirmed = client is not None
 
@@ -143,19 +148,29 @@ def build_digest_html(papers: list[dict], profile: dict, window: dict,
     n_classified = sum(1 for p in papers if p.get("focus_areas"))
     win = f"{window.get('from','?')} → {window.get('to','?')}"
 
+    if mode == "live":
+        banner = ""
+    elif mode == "test":
+        banner = ('<div style="font-size:12px;color:#1e40af;background:#eff6ff;border:1px solid '
+                  '#bfdbfe;border-radius:6px;padding:8px 10px;margin:12px 0;">TEST SEND — a preview '
+                  'to a single address, not the distribution list.</div>')
+    else:  # dry_run
+        banner = ('<div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid '
+                  '#fde68a;border-radius:6px;padding:8px 10px;margin:12px 0;">DRY RUN — not sent. '
+                  + ('' if confirmed else 'Classification is embedding-only (not yet LLM-confirmed); '
+                     'narrow targets like MYC/HuR may include off-topic papers until an Anthropic key is added. ')
+                  + 'Relevance notes are ' + ('LLM-written from the abstract.' if confirmed
+                                              else 'the abstract\'s first sentence (no LLM key set).')
+                  + '</div>')
+
     parts = [
         '<div style="max-width:720px;margin:0 auto;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111;">',
         '<h1 style="font-size:22px;margin:0 0 2px;">BCC PDAC Literature Digest</h1>',
         f'<div style="font-size:13px;color:#6b7280;">New open-access PDAC literature · {win} · '
         f'{n_classified} of {len(papers)} papers matched a focus area</div>',
-        '<div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;'
-        'border-radius:6px;padding:8px 10px;margin:12px 0;">DRY RUN — not sent. '
-        + ('' if confirmed else 'Classification is embedding-only (not yet LLM-confirmed); '
-           'narrow targets like MYC/HuR may include off-topic papers until an Anthropic key is added. ')
-        + 'Relevance notes are ' + ('LLM-written from the abstract.' if confirmed
-                                     else 'the abstract\'s first sentence (no LLM key set).')
-        + '</div>',
     ]
+    if banner:
+        parts.append(banner)
     if analytics_html:
         parts.append(analytics_html)
     for area, items in sections:

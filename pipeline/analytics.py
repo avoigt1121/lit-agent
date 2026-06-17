@@ -1,61 +1,61 @@
 """
-pipeline/analytics.py — week/month/year coverage aggregations (Phase 4).
+pipeline/analytics.py — rolling coverage trends (Phase 4).
 
-Simple aggregations over the timestamped, topic-tagged corpus: per-focus-area
-counts for each window and the delta vs the immediately-preceding equal-length
-window. Precomputed and cached to data/analytics.json so the Space renders them
-instantly (the Space never recomputes), and a compact "coverage at a glance"
-block is rendered into the digest.
+Reads the keyword count time-series (coverage_counts, weekly buckets — see
+pipeline/backfill.py) and computes trailing-window totals + deltas vs the prior
+equal window, for week / month / year:
 
-Windows are keyed on first_seen_date (the canonical "new" date), so counts
-reconcile against the runs table. With only one week of history the month/year
-windows coincide with the week and prior-period deltas are the full count
-(everything is new) — they fill in as weeks accumulate.
+    week  = last 1 weekly bucket   vs the bucket before
+    month = last 4 weekly buckets  vs the prior 4
+    year  = last 52 weekly buckets vs the prior 52
 
-Roadmap (CLAUDE.md "Post-v1 roadmap"): per-area breakdown stays first-class so
-the Space can render one tab per area off this same cache.
+Precomputed and cached to data/analytics.json so the Space renders instantly (it
+never recomputes), and a compact "coverage trends" table is rendered into the
+digest. These are a coverage-VOLUME lens (keyword hitCounts), distinct from the
+digest's embedding+LLM curation.
+
+Roadmap (CLAUDE.md "Post-v1 roadmap"): per-area series stay first-class so the
+Space can render one tab per area off this same cache.
 """
 from __future__ import annotations
 
 import json
-import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
-WINDOWS = {"week": 7, "month": 30, "year": 365}
+from store import db
+
+WINDOWS = {"week": 1, "month": 4, "year": 52}  # measured in weekly buckets
+# Recent weeks undercount until Europe PMC finishes indexing (FIRST_PDATE lag).
+# Drop the most recent LAG_WEEKS complete weeks so every window compares
+# settled-vs-settled data instead of showing a spurious decline.
+LAG_WEEKS = 2
 
 
-def _counts(conn: sqlite3.Connection, start: str, end: str) -> tuple[int, dict[str, int]]:
-    total = conn.execute(
-        "SELECT COUNT(*) FROM papers WHERE first_seen_date BETWEEN ? AND ?",
-        (start, end)).fetchone()[0]
-    rows = conn.execute(
-        "SELECT t.focus_area, COUNT(DISTINCT t.paper_id) FROM topic_tags t "
-        "JOIN papers p ON p.paper_id = t.paper_id "
-        "WHERE p.first_seen_date BETWEEN ? AND ? GROUP BY t.focus_area",
-        (start, end)).fetchall()
-    return total, {r[0]: r[1] for r in rows}
-
-
-def compute(conn: sqlite3.Connection, today: date | None = None) -> dict:
-    """Per-window totals + per-area counts + deltas vs the prior equal-length window."""
-    today = today or date.today()
+def compute_trends(conn, today: date | None = None) -> dict:
+    """Per-series trailing-window totals + deltas vs the prior equal window."""
+    areas = [r[0] for r in conn.execute(
+        "SELECT DISTINCT focus_area FROM coverage_counts WHERE granularity='week'")]
     out: dict = {"generated_at": datetime.now().isoformat(timespec="seconds"),
-                 "today": today.isoformat(), "windows": {}}
-    for name, days in WINDOWS.items():
-        cur_start = (today - timedelta(days=days - 1)).isoformat()
-        cur_end = today.isoformat()
-        prior_start = (today - timedelta(days=2 * days - 1)).isoformat()
-        prior_end = (today - timedelta(days=days)).isoformat()
-        cur_total, cur_area = _counts(conn, cur_start, cur_end)
-        prior_total, prior_area = _counts(conn, prior_start, prior_end)
-        delta_area = {a: cur_area.get(a, 0) - prior_area.get(a, 0)
-                      for a in set(cur_area) | set(prior_area)}
-        out["windows"][name] = {
-            "from": cur_start, "to": cur_end,
-            "total": cur_total, "by_area": cur_area,
-            "delta_total": cur_total - prior_total, "delta_by_area": delta_area,
-        }
+                 "windows": list(WINDOWS), "as_of": None, "series": {}}
+    for area in areas:
+        series = db.get_coverage(conn, area, "week")
+        # complete 7-day weeks only, then drop the last LAG_WEEKS (indexing lag)
+        series = [r for r in series
+                  if (date.fromisoformat(r["period_end"]) - date.fromisoformat(r["period_start"])).days == 6]
+        if LAG_WEEKS and len(series) > LAG_WEEKS:
+            series = series[:-LAG_WEEKS]
+        if not series:
+            continue
+        counts = [row["count"] or 0 for row in series]  # chronological
+        out["as_of"] = series[-1]["period_end"]
+        wins = {}
+        for name, n in WINDOWS.items():
+            cur = sum(counts[-n:]) if counts else 0
+            prior = sum(counts[-2 * n:-n]) if len(counts) >= 2 * n else None
+            wins[name] = {"current": cur, "prior": prior,
+                          "delta": (cur - prior) if prior is not None else None}
+        out["series"][area] = wins
     return out
 
 
@@ -67,26 +67,54 @@ def cache(data: dict, path: str | Path = "data/analytics.json") -> Path:
 
 
 def _area_name(profile: dict, area_id: str) -> str:
+    if area_id == "_total":
+        return "All PDAC"
     for a in profile.get("focus_areas", []):
         if a["id"] == area_id:
             return a["name"]
     return area_id
 
 
-def footer_html(data: dict, profile: dict, window_key: str = "week") -> str:
-    """Compact 'coverage at a glance' block for the digest (this window, with deltas)."""
-    w = data["windows"][window_key]
-    rows = sorted(w["by_area"].items(), key=lambda x: -x[1])
-    items = []
-    for aid, n in rows:
-        d = w["delta_by_area"].get(aid, 0)
-        arrow = f' <span style="color:#059669;">▲{d}</span>' if d > 0 else (
-            f' <span style="color:#dc2626;">▼{abs(d)}</span>' if d < 0 else "")
-        items.append(f'<li style="margin:2px 0;">{_area_name(profile, aid)}: <b>{n}</b>{arrow}</li>')
+def _delta_span(d) -> str:
+    if d is None:
+        return ' <span style="color:#9ca3af;">—</span>'
+    if d > 0:
+        return f' <span style="color:#059669;">▲{d}</span>'
+    if d < 0:
+        return f' <span style="color:#dc2626;">▼{abs(d)}</span>'
+    return ' <span style="color:#9ca3af;">0</span>'
+
+
+def footer_html(data: dict, profile: dict) -> str:
+    """Compact 'coverage trends' table for the digest (week/month/year + deltas)."""
+    series = data.get("series", {})
+    order = ["_total"] + [a["id"] for a in profile.get("focus_areas", [])]
+    rows = []
+    for aid in order:
+        w = series.get(aid)
+        if not w:
+            continue
+        cells = "".join(
+            f'<td style="padding:2px 10px;text-align:right;white-space:nowrap;">'
+            f'{w[win]["current"]}{_delta_span(w[win]["delta"])}</td>'
+            for win in ("week", "month", "year"))
+        weight = "600" if aid == "_total" else "400"
+        rows.append(f'<tr><td style="padding:2px 10px;font-weight:{weight};">'
+                    f'{_area_name(profile, aid)}</td>{cells}</tr>')
+    if not rows:
+        return ('<div style="font-size:12px;color:#6b7280;margin:18px 0;">No coverage trend data '
+                'yet — run <code>python -m pipeline.backfill</code>.</div>')
     return (
-        '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;'
-        'padding:12px 16px;margin:18px 0;">'
-        f'<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Coverage at a glance '
-        f'({window_key}, Δ vs prior {window_key})</div>'
-        f'<ul style="margin:0;padding-left:18px;font-size:13px;color:#374151;list-style:disc;">'
-        f'{"".join(items) or "<li>No tagged papers this window.</li>"}</ul></div>')
+        '<div style="margin:18px 0;">'
+        '<div style="font-size:13px;font-weight:600;margin-bottom:4px;">Coverage trends '
+        f'<span style="font-weight:400;color:#6b7280;">(papers per period · Δ vs prior · '
+        f'as of {data.get("as_of", "")})</span></div>'
+        '<table style="border-collapse:collapse;font-size:12px;color:#374151;">'
+        '<tr style="color:#6b7280;"><th style="text-align:left;padding:2px 10px;">Area</th>'
+        '<th style="padding:2px 10px;">Week</th><th style="padding:2px 10px;">Month</th>'
+        '<th style="padding:2px 10px;">Year</th></tr>'
+        + "".join(rows) + '</table>'
+        '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Keyword-match counts '
+        '(Europe PMC) — a coverage-volume lens, distinct from the curated picks above. '
+        'Month = trailing 4 weeks, Year = trailing 52 weeks. The most recent week(s) '
+        'undercount until Europe PMC finishes indexing; the weekly run revises them.</div></div>')
