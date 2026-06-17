@@ -137,7 +137,14 @@ def _latest_window(db_path: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 def _hub_repo_token():
-    return os.environ.get("CORPUS_HF_DATASET"), os.environ.get("HF_TOKEN")
+    # Token resolves from the HF_TOKEN env var OR a `huggingface-cli login` cache,
+    # so a local .env is NOT required. CORPUS_HF_DATASET is plain config (env/.env).
+    try:
+        from huggingface_hub import get_token
+        token = os.environ.get("HF_TOKEN") or get_token()
+    except Exception:
+        token = os.environ.get("HF_TOKEN")
+    return os.environ.get("CORPUS_HF_DATASET"), token
 
 
 def pull_from_hub(db_path: Path = DEFAULT_DB, index_path: Path = DEFAULT_INDEX) -> bool:
@@ -163,11 +170,15 @@ def sync_to_hub(db_path: Path = DEFAULT_DB, index_path: Path = DEFAULT_INDEX) ->
     """Push the corpus to the durable HF Dataset repo. No-op with a warning if unset."""
     repo, token = _hub_repo_token()
     if not repo or not token:
-        logger.warning("CORPUS_HF_DATASET / HF_TOKEN unset — skipping durable persist (local only).")
+        logger.warning("No CORPUS_HF_DATASET or HF token (set CORPUS_HF_DATASET, and run "
+                       "`huggingface-cli login` or set HF_TOKEN) — skipping durable persist (local only).")
         return False
     from huggingface_hub import HfApi
     api = HfApi(token=token)
-    api.create_repo(repo, repo_type="dataset", exist_ok=True, private=True)
+    try:
+        api.create_repo(repo, repo_type="dataset", exist_ok=True, private=True)
+    except Exception as exc:  # noqa: BLE001 — repo likely already exists; uploading still needs write
+        logger.info("create_repo skipped (%s); assuming %s exists, proceeding to upload.", exc, repo)
     api.upload_file(path_or_fileobj=str(db_path), path_in_repo="corpus.sqlite",
                     repo_id=repo, repo_type="dataset")
     if Path(index_path).exists():
