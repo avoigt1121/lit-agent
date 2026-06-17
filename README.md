@@ -41,16 +41,19 @@ app.py · ui.py   — HF Space (Phase 5)
 | 2 | Digest (dry-run) — interest model + per-area HTML | ✅ done (LLM-confirmed) |
 | 3 | Deliver — Resend mailer + cron + `SEND_LIVE` gate | ✅ wired (live pending domain + recipients) |
 | 4 | Analytics — windows/deltas + cache | ✅ done |
-| 5 | Q&A Space — retrieve + grounded answer | scaffolded |
+| 5 | Q&A Space — retrieve + grounded answer + guard (Gradio) | ✅ done |
 | 6 | Eval & harden — groundedness + relevance | scaffolded |
 | 7 | Optional — register as a Coordinator specialist | not started |
 
 ## Quickstart (Phase 0 spike)
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pipeline.harvest -v        # writes data/spike.json
-.venv/bin/python -m pipeline.harvest --days 14 # wider window
+# Python 3.10+ required (gradio 5). HF Space runs 3.11.
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pipeline.harvest -v        # Phase 0: writes data/spike.json
+.venv/bin/python -m pipeline.run_weekly --from-spike --no-sync   # build corpus + digest
+.venv/bin/python -m pipeline.backfill --years 5 -v               # coverage trend history
+.venv/bin/python app.py                        # Phase 5: Q&A Space at localhost:7860
 ```
 
 Sources: Europe PMC REST (primary), PubMed E-utilities (MeSH; set `NCBI_API_KEY`

@@ -38,9 +38,13 @@ full text in the email.
 
 ## 2. Online Space (Hugging Face) — Phase 5
 
-`app.py` builds `ui.py` and launches on port 7860. The Space loads the corpus
-(SQLite + embedding index) **read-only** at startup and serves chat + cached
-analytics. It NEVER ingests.
+`app.py` builds `ui.py` and launches on port 7860 (Python 3.10+ — gradio 5; HF
+runs 3.11). On startup it `pull_from_hub()`s the corpus (SQLite + embedding
+index) and serves it **read-only** — grounded Q&A (DOI-cited, abstract-only
+guard) + cached analytics. It NEVER ingests. Space secrets: `ANTHROPIC_API_KEY`
+(answers) and `CORPUS_HF_DATASET` + `HF_TOKEN` (to pull the corpus). Without a
+key it falls back to returning the retrieved passages unsynthesized. Run locally
+with `python app.py`.
 
 ### Sync workflow — to reconstruct in Phase 3
 
