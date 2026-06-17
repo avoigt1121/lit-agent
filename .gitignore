@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets — NEVER commit. ANTHROPIC_API_KEY, NCBI_API_KEY, the email-provider
+# key, and the HF token are environment / Space secrets only.
+.env
+.env.*
+!.env.example
+
+# Pipeline artifacts: regenerated each run and persisted to the durable store
+# (HF Dataset / external DB), not to git.
+data/*
+!data/.gitkeep
+out/*
+!out/.gitkeep
+*.sqlite
+*.sqlite3
+*.db
+
+# OS
+.DS_Store

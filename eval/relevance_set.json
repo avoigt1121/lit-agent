@@ -1,0 +1,4 @@
+{
+  "_comment": "Labeled digest items for relevance-precision grading (Phase 6). One item per paper with a human label of whether it is genuinely of interest to the BCC. Item: doi, title, abstract, expected_focus_areas, is_relevant (bool), notes.",
+  "items": []
+}

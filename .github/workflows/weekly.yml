@@ -1,0 +1,41 @@
+# .github/workflows/weekly.yml — weekly ingestion + digest cron (Phase 3).
+#
+# Runs the OFFLINE pipeline (pipeline/run_weekly.py): pull durable corpus →
+# harvest → normalize → embed → classify → persist → digest → deliver → push.
+# Email stays DRY-RUN unless the SEND_LIVE repo VARIABLE is "1". Secrets are
+# repo/environment secrets — never committed.
+
+name: weekly-digest
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 13 * * 1"   # Mondays 13:00 UTC
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r requirements.txt
+      - name: Run weekly pipeline
+        env:
+          # LLM (classification + relevance notes)
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # PubMed rate-limit lift (optional)
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+          # Durable corpus store (HF Dataset)
+          CORPUS_HF_DATASET: ${{ vars.CORPUS_HF_DATASET }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # Email delivery (Resend by default)
+          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER }}
+          EMAIL_SENDER: ${{ vars.EMAIL_SENDER }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Live-send gate — set the SEND_LIVE repo VARIABLE to "1" to email the list.
+          SEND_LIVE: ${{ vars.SEND_LIVE }}
+        run: python -m pipeline.run_weekly -v

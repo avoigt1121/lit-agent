@@ -1,0 +1,61 @@
+# config/sources.yaml — the saved, version-controlled PDAC query + per-source
+# params. This is the SINGLE SOURCE OF TRUTH for coverage. Keep the query stable
+# so week-over-week harvests are reproducible; change the focus areas in
+# interest_profile.yaml instead of widening this query unless coverage demands it.
+
+# Trailing window (days) the harvester pulls on each run. "New" is ultimately
+# defined by first_seen_date at ingestion (see normalize.py); this only bounds
+# what each source returns per run.
+window_days: 7
+
+# Contact details for API etiquette (NCBI/EBI ask for a tool name + email).
+contact_email: a.voigt1121@gmail.com
+tool_name: bcc-lit-agent
+
+# --- Europe PMC REST — PRIMARY ------------------------------------------------
+# All PubMed + OA full-text flags + text-mined annotations. resultType=core
+# returns abstracts, authors, MeSH, and OA flags in one call.
+europepmc:
+  enabled: true
+  base_url: https://www.ebi.ac.uk/europepmc/webservices/rest/search
+  query: >-
+    (pancreatic ductal adenocarcinoma OR PDAC OR "pancreatic cancer"
+     OR "pancreatic neoplasms" OR "pancreatic carcinoma")
+  date_field: FIRST_PDATE   # FIRST_PDATE (first publication) | CREATION_DATE
+  page_size: 1000           # Europe PMC max
+  result_type: core         # core => abstract, authors, MeSH, OA flags
+  max_pages: 10             # safety cap for the spike
+
+# --- PubMed E-utilities — secondary / MeSH ------------------------------------
+# Authoritative MeSH terms. Throttled to requests_per_second (3 anon; set the
+# NCBI_API_KEY env var to lift to 10).
+pubmed:
+  enabled: true
+  esearch_url: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi
+  efetch_url: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi
+  term: >-
+    (pancreatic ductal adenocarcinoma[Title/Abstract] OR PDAC[Title/Abstract]
+     OR "pancreatic neoplasms"[MeSH Terms] OR pancreatic cancer[Title/Abstract])
+  date_type: pdat           # pdat = publication date; edat = Entrez (indexed) date
+  retmax: 2000
+  efetch_batch: 200
+  requests_per_second: 3
+
+# --- bioRxiv / medRxiv — preprints, REQUIRED for recency ----------------------
+# The details endpoint has no text search, so it returns every preprint in the
+# window; we keep only those matching `keywords` (substring over title+abstract).
+preprints:
+  enabled: true
+  servers: [biorxiv, medrxiv]
+  # Both servers are served from the api.biorxiv.org host; {server} selects which.
+  base_url_tmpl: https://api.biorxiv.org/details/{server}/{date_from}/{date_to}/{cursor}
+  page_size: 100            # API returns 100 per page
+  max_pages: 50             # safety cap
+  keywords:
+    - pancreatic ductal adenocarcinoma
+    - pdac
+    - pancreatic cancer
+    - pancreatic tumor
+    - pancreatic tumour
+    - pancreatic neoplasm
+    - pancreatic carcinoma

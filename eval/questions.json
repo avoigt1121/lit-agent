@@ -1,0 +1,4 @@
+{
+  "_comment": "Q&A groundedness bank (Phase 6). One item per question. Mirror the research-coordinator shape: id, category, question, expected_behavior, notes. expected_behavior in {GROUNDED_ANSWER, ABSTRACT_ONLY_GUARD, REFUSE_NO_EVIDENCE}.",
+  "questions": []
+}

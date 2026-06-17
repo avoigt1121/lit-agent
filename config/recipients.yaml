@@ -1,0 +1,21 @@
+# config/recipients.yaml — weekly digest distribution list (consumed in Phase 3).
+#
+# ⚠️ PLACEHOLDER. 5–20 addresses. Replace with the real BCC list before enabling
+# live send. Email stays in DRY-RUN until the SEND_LIVE=1 env flag is set, no
+# matter what is listed here.
+#
+# Per-recipient `focus_areas` is OPTIONAL and forward-looking (see CLAUDE.md
+# "Post-v1 roadmap"): omit it (or leave empty) to receive the full digest. v1
+# sends everyone the whole digest and ignores this field; Phase 3+ will filter
+# each person's email to their subscribed areas without a schema change. Values
+# are focus-area `id`s from interest_profile.yaml.
+
+recipients: []
+# Example:
+# recipients:
+#   - name: Jane Researcher
+#     email: jane@ohsu.edu
+#     # focus_areas omitted ⇒ full digest
+#   - name: Sam Postdoc
+#     email: sam@ohsu.edu
+#     focus_areas: [kras_targeting, subtypes_transcriptomics]   # subscribed subset (post-v1)

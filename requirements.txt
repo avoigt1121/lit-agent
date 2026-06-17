@@ -1,0 +1,22 @@
+# lit-agent runtime + pipeline dependencies.
+#
+# STANDALONE: do NOT add research-coordinator / biodata-registry /
+# DecoupleRpy_Agent here. They are structural references only (see CLAUDE.md) —
+# this agent does not import from or depend on them at runtime.
+
+# --- Phase 0: harvest ---
+requests>=2.31
+PyYAML>=6.0
+
+# --- Phase 1: corpus (dedup + local embeddings + durable store) ---
+numpy>=1.23
+rapidfuzz>=3.0          # fuzzy-title dedup
+fastembed>=0.3          # LOCAL embeddings (BGE-small, ONNX — no API key/torch)
+huggingface_hub>=0.23   # push/pull the corpus to the durable HF Dataset repo
+
+# --- Phase 2: interest model + digest ---
+anthropic>=0.40         # LLM classify-confirm + relevance notes (optional; needs ANTHROPIC_API_KEY)
+python-dotenv>=1.0      # local .env loading for the offline pipeline
+
+# --- Added in later phases (kept commented until the phase lands) ---
+# gradio>=5.0            # Phase 5 Q&A Space (mirror research-coordinator)
