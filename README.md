@@ -1,3 +1,16 @@
+<!-- The YAML block below is the Hugging Face Space card (read by HF when this
+repo is deployed as a Gradio Space). It is harmless on GitHub. -->
+---
+title: BCC PDAC Literature Q&A
+emoji: 📚
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 5.50.0
+app_file: app.py
+pinned: false
+---
+
 # lit-agent — BCC Literature Review Agent
 
 A **standalone** Literature Review Agent for the Brenden-Colson Center for

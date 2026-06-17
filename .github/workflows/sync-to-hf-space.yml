@@ -1,0 +1,42 @@
+# Deploys the GitHub repo → the HF Gradio Space (the Q&A surface) on every push
+# to main. The Space then installs requirements.txt and runs app.py, which pulls
+# the corpus from CORPUS_HF_DATASET at startup. data/ is git-ignored, so no
+# corpus or secrets are pushed — those live in the Space's settings.
+#
+# Required: repo secret HF_TOKEN (write access to the Space); repo variables
+# HF_USERNAME (e.g. anne-voigt) and HF_SPACE_ID (e.g. anne-voigt/bcc-lit-agent).
+
+name: sync-to-hf-space
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: sync-hf-space
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      - name: Force-push to the HF Space (with retries)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ vars.HF_USERNAME }}
+          HF_SPACE_ID: ${{ vars.HF_SPACE_ID }}
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo "HF_TOKEN secret not set"; exit 1; }
+          test -n "${HF_SPACE_ID:-}" || { echo "HF_SPACE_ID variable not set"; exit 1; }
+          remote="https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE_ID}.git"
+          for attempt in 1 2 3; do
+            if git push --force "$remote" HEAD:main; then echo "synced to $HF_SPACE_ID"; exit 0; fi
+            echo "push attempt $attempt failed; retrying in $((attempt * 10))s"; sleep $((attempt * 10))
+          done
+          echo "sync failed after 3 attempts"; exit 1

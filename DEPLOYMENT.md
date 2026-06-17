@@ -3,6 +3,32 @@
 Two deployable surfaces; mirrors how the Research Coordinator / DecoupleRpy were
 hardened (dev surface first, dry-run email, then promote).
 
+## Walkthrough (ordered)
+
+You drive the account-level steps (HF/GitHub dashboards + secrets); the repo
+already contains all the code + machinery. HF username assumed `anne-voigt`.
+
+1. **Push to GitHub.** `git remote add origin <repo-url> && git push -u origin main`.
+2. **Create the corpus HF Dataset** (private), e.g. `anne-voigt/bcc-lit-corpus`.
+   Populate it once locally: set `CORPUS_HF_DATASET` + `HF_TOKEN` in `.env`, then
+   `python -m pipeline.run_weekly --from-spike` (builds the corpus and pushes it),
+   and `python -m pipeline.backfill --years 5` (coverage history).
+3. **Create the HF Gradio Space** `anne-voigt/bcc-lit-agent` (SDK = gradio). HF
+   reads the Space card from this repo's README frontmatter (`app_file: app.py`).
+   Set Space **secrets** `ANTHROPIC_API_KEY`, `HF_TOKEN`; Space **variable**
+   `CORPUS_HF_DATASET`. (`app.py` pulls the corpus from it at startup.)
+4. **Auto-deploy the Space.** Add GitHub repo **secret** `HF_TOKEN` and
+   **variables** `HF_USERNAME`, `HF_SPACE_ID` — then `sync-to-hf-space.yml`
+   force-pushes the repo to the Space on every push to `main`.
+5. **Schedule ingestion.** Add the `weekly.yml` secrets/vars (§1). Mondays it
+   pulls the corpus → harvests → … → pushes the corpus → writes a dry-run digest.
+6. **Go live on email** once `recipients.yaml` is filled and a `--test-send`
+   looks right: set the `SEND_LIVE` repo variable to `1`.
+7. **(Optional) Phase 7** — apply [INTEGRATION.md](INTEGRATION.md) to
+   research-coordinator so it routes literature questions to lit-agent.
+
+Per-surface detail follows.
+
 ## 1. Offline pipeline (GitHub Actions cron) — Phase 3
 
 `.github/workflows/weekly.yml` runs `pipeline/run_weekly.py` weekly (Mondays
