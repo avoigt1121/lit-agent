@@ -25,7 +25,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Scalar columns stored as their own SQLite columns; everything else in the
 # normalized record is JSON-encoded into the matching column.
@@ -102,6 +102,20 @@ def init_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (granularity, period_start, focus_area, source)
         );
         CREATE INDEX IF NOT EXISTS idx_cov_area ON coverage_counts(focus_area, period_start);
+
+        CREATE TABLE IF NOT EXISTS keyword_counts (
+            focus_area   TEXT NOT NULL,
+            keyword      TEXT NOT NULL,
+            granularity  TEXT NOT NULL,   -- 'quarter'
+            period_start TEXT NOT NULL,
+            period_end   TEXT NOT NULL,
+            complete     INTEGER,         -- 1 = full quarter, 0 = partial (current)
+            count        INTEGER,
+            source       TEXT,
+            method       TEXT,
+            PRIMARY KEY (focus_area, keyword, granularity, period_start, source)
+        );
+        CREATE INDEX IF NOT EXISTS idx_kw ON keyword_counts(focus_area, keyword, period_start);
 
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
         """
@@ -250,3 +264,29 @@ def get_coverage(conn: sqlite3.Connection, focus_area: str, granularity: str = "
         (focus_area, granularity),
     )
     return [{"period_start": r[0], "period_end": r[1], "count": r[2]} for r in rows]
+
+
+def upsert_keyword_counts(conn: sqlite3.Connection, rows: list[dict]) -> None:
+    conn.executemany(
+        "INSERT INTO keyword_counts"
+        "(focus_area, keyword, granularity, period_start, period_end, complete, count, source, method) "
+        "VALUES(:focus_area, :keyword, :granularity, :period_start, :period_end, :complete, :count, :source, :method) "
+        "ON CONFLICT(focus_area, keyword, granularity, period_start, source) DO UPDATE SET "
+        "count=excluded.count, period_end=excluded.period_end, complete=excluded.complete, method=excluded.method",
+        rows,
+    )
+    conn.commit()
+
+
+def keyword_periods_present(conn: sqlite3.Connection, source: str) -> set:
+    """(focus_area, keyword, period_start) already stored (for resumable backfills)."""
+    return {(r[0], r[1], r[2]) for r in conn.execute(
+        "SELECT focus_area, keyword, period_start FROM keyword_counts WHERE source=?", (source,))}
+
+
+def get_keyword_counts(conn: sqlite3.Connection, granularity: str = "quarter") -> list[dict]:
+    rows = conn.execute(
+        "SELECT focus_area, keyword, period_start, period_end, complete, count "
+        "FROM keyword_counts WHERE granularity=? ORDER BY period_start", (granularity,))
+    return [{"focus_area": r[0], "keyword": r[1], "period_start": r[2],
+             "period_end": r[3], "complete": r[4], "count": r[5]} for r in rows]

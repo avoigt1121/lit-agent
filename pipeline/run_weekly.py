@@ -115,9 +115,10 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
     papers = list(db.iter_papers(conn))
     profile = load_interest_profile(PROFILE_PATH)
     adata = analytics.compute_trends(conn)
+    movers = analytics.keyword_movers(conn, profile)
     conn.close()
-    analytics.cache(adata, ROOT / "data" / "analytics.json")
-    footer = analytics.footer_html(adata, profile)
+    analytics.cache({**adata, "keyword_movers": movers}, ROOT / "data" / "analytics.json")
+    footer = analytics.footer_html(adata, profile) + analytics.keyword_movers_html(movers, profile)
     html_str = build_digest_html(papers, profile, window, client=client,
                                  analytics_html=footer, mode=mode)
     path = write_dry_run(html_str, out_dir=ROOT / "out", date_str=window.get("to"))
@@ -275,6 +276,7 @@ def main() -> None:
     if not args.no_coverage:
         try:
             backfill.update_current_week(args.db)
+            backfill.update_recent_keyword_quarters(2, args.db)
         except Exception as exc:  # noqa: BLE001 — don't fail the run on a coverage hiccup
             logger.warning("coverage update skipped: %s", exc)
 

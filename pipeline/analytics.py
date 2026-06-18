@@ -117,3 +117,61 @@ def footer_html(data: dict, profile: dict) -> str:
         '(Europe PMC) — a coverage-volume lens, distinct from the curated picks above. '
         'Quarter = trailing 13 weeks, Year = trailing 52 weeks; recent weeks undercount '
         'until indexing settles.</div></div>')
+
+
+# ---------------------------------------------------------------------------
+# Keyword movers (specific terms; the drill-down beneath the topic rollup)
+# ---------------------------------------------------------------------------
+
+def keyword_movers(conn, profile: dict, top_n: int = 3) -> dict:
+    """Per area, the tracked keywords with the largest YoY-style growth.
+
+    For each (area, keyword): trailing 4 COMPLETE quarters vs the prior 4 (a
+    rolling-12-month comparison; the partial current quarter is excluded).
+    Returns {area: [{keyword, cur, prior, delta, pct}]} sorted by % growth.
+    """
+    from collections import defaultdict
+    series = defaultdict(list)
+    for r in db.get_keyword_counts(conn, "quarter"):
+        if r["complete"]:
+            series[(r["focus_area"], r["keyword"])].append(r["count"] or 0)
+    by_area: dict = defaultdict(list)
+    for (area, kw), counts in series.items():
+        cur = sum(counts[-4:])
+        prior = sum(counts[-8:-4]) if len(counts) >= 8 else None
+        delta = (cur - prior) if prior is not None else None
+        pct = round(delta / prior * 100) if (prior and prior > 0) else None
+        by_area[area].append({"keyword": kw, "cur": cur, "prior": prior, "delta": delta, "pct": pct})
+    out = {}
+    for area, lst in by_area.items():
+        lst.sort(key=lambda m: (m["pct"] if m["pct"] is not None else -999, m["delta"] or 0), reverse=True)
+        out[area] = lst[:top_n]
+    return out
+
+
+def keyword_movers_html(movers: dict, profile: dict) -> str:
+    """Compact per-area 'keyword movers' list for the digest (specific terms only)."""
+    name = {a["id"]: a["name"] for a in profile.get("focus_areas", [])}
+    items = []
+    for aid in [a["id"] for a in profile.get("focus_areas", [])]:
+        ms = movers.get(aid)
+        if not ms:
+            continue
+        parts = []
+        for m in ms:
+            arrow = ""
+            if m["pct"] is not None and m["pct"] > 0:
+                arrow = f' <span style="color:#059669;">▲{m["pct"]}%</span>'
+            elif m["pct"] is not None and m["pct"] < 0:
+                arrow = f' <span style="color:#dc2626;">▼{abs(m["pct"])}%</span>'
+            parts.append(f'{m["keyword"]} ({m["cur"]}){arrow}')
+        items.append(f'<li style="margin:3px 0;"><b style="font-weight:500;">{name.get(aid, aid)}:</b> '
+                     f'{" · ".join(parts)}</li>')
+    if not items:
+        return ""
+    return ('<div style="margin:16px 0;">'
+            '<div style="font-size:13px;font-weight:600;margin-bottom:4px;">Keyword movers '
+            '<span style="font-weight:400;color:#6b7280;">(specific terms · last 12 mo count · '
+            '▲ vs prior 12 mo)</span></div>'
+            f'<ul style="margin:0;padding-left:18px;font-size:12px;color:#374151;list-style:disc;">'
+            f'{"".join(items)}</ul></div>')

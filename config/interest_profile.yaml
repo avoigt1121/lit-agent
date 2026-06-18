@@ -125,3 +125,17 @@ focus_areas:
     audience_note: >
       Cachexia and patient resiliency — muscle wasting/sarcopenia, metabolic/
       inflammatory drivers (e.g. GDF15), body composition, nutrition, QoL, supportive care.
+
+# Specific, high-signal terms tracked INDIVIDUALLY for keyword-level "movers"
+# (drug names, mutations, named targets/genes). Generic terms are deliberately
+# excluded — they just echo the topic. Each is counted per quarter (Europe PMC
+# hitCount) by pipeline/backfill.py --keywords; analytics surfaces YoY movers.
+tracked_keywords:
+  myc: [MYC, MYCN, Omomyc]
+  hur_elavl1: [HuR, ELAVL1]
+  kras_ras_mapk: [G12D, G12C, sotorasib, adagrasib, MRTX1133, SHP2]
+  ddr_repair: [BRCA2, PALB2, PARP, olaparib, ATR, WEE1]
+  immunology_immunotherapy: ["PD-L1", "CTLA-4", "CAR-T", neoantigen, MDSC]
+  stroma_tme: [myCAF, iCAF, hyaluronan, "stellate cell", desmoplasia]
+  early_detection_biomarkers: ["CA19-9", cfDNA, ctDNA, exosome, IPMN]
+  cachexia_resiliency: [cachexia, sarcopenia, GDF15, myosteatosis]

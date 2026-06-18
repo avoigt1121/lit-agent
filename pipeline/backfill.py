@@ -119,16 +119,84 @@ def update_current_week(db_path: Path = DEFAULT_DB, n_weeks: int = 4) -> int:
     return nq
 
 
+# ---------------------------------------------------------------------------
+# Keyword-level counts (the specific high-signal terms; calendar quarters)
+# ---------------------------------------------------------------------------
+
+def quarter_buckets(years: int, today: date | None = None) -> list[tuple[date, date, bool, str]]:
+    """Calendar-quarter (start, end, is_complete, label) over the last N years."""
+    today = today or date.today()
+    out = []
+    for y in range(today.year - years, today.year + 1):
+        for q, (m1, m2) in enumerate([(1, 3), (4, 6), (7, 9), (10, 12)], start=1):
+            qs = date(y, m1, 1)
+            qe = date(y, 12, 31) if m2 == 12 else date(y, m2 + 1, 1) - timedelta(days=1)
+            if qs > today:
+                continue
+            out.append((qs, min(qe, today), qe <= today, f"{y}Q{q}"))
+    return out
+
+
+def _kw_q(kw: str) -> str:
+    return f'"{kw}"' if " " in kw else kw
+
+
+def _tracked_pairs(profile: dict) -> list[tuple[str, str]]:
+    return [(a, kw) for a, kws in (profile.get("tracked_keywords") or {}).items() for kw in kws]
+
+
+def backfill_keywords(years: int = 5, db_path: Path = DEFAULT_DB, force: bool = False,
+                      quarters: list | None = None) -> int:
+    """Quarterly hitCount per tracked keyword → keyword_counts. Resumable."""
+    cfg = load_config()
+    ep = cfg["europepmc"]
+    base_url, pdac_q = ep["base_url"], " ".join(ep["query"].split())
+    pairs = _tracked_pairs(load_interest_profile(PROFILE_PATH))
+    session = _session(cfg.get("contact_email", ""), cfg.get("tool_name", "lit-agent"))
+    conn = db.connect(db_path)
+    db.init_schema(conn)
+    present = set() if force else db.keyword_periods_present(conn, "europepmc")
+    quarters = quarters if quarters is not None else quarter_buckets(years)
+    logger.info("Keyword backfill: %d keywords x %d quarters", len(pairs), len(quarters))
+    nq = 0
+    for qs, qe, complete, label in quarters:
+        rows = []
+        for area, kw in pairs:
+            if not force and (area, kw, qs.isoformat()) in present:
+                continue
+            q = f'({pdac_q}) AND {_kw_q(kw)} AND FIRST_PDATE:[{qs.isoformat()} TO {qe.isoformat()}]'
+            rows.append(dict(focus_area=area, keyword=kw, granularity="quarter",
+                             period_start=qs.isoformat(), period_end=qe.isoformat(),
+                             complete=1 if complete else 0,
+                             count=_hitcount(session, base_url, q),
+                             source="europepmc", method="keyword_hitcount"))
+            nq += 1
+            time.sleep(PAUSE)
+        if rows:
+            db.upsert_keyword_counts(conn, rows)
+            logger.info("  %s: +%d (running %d)", label, len(rows), nq)
+    conn.close()
+    logger.info("Keyword backfill done: %d queries", nq)
+    return nq
+
+
+def update_recent_keyword_quarters(n: int = 2, db_path: Path = DEFAULT_DB) -> int:
+    """Refresh the trailing n quarters' keyword counts (force) — called weekly."""
+    return backfill_keywords(years=1, db_path=db_path, force=True, quarters=quarter_buckets(1)[-n:])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Backfill the coverage count time-series.")
     ap.add_argument("--years", type=int, default=5)
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
-    ap.add_argument("--force", action="store_true", help="Recompute weeks already present.")
+    ap.add_argument("--force", action="store_true", help="Recompute periods already present.")
+    ap.add_argument("--keywords", action="store_true",
+                    help="Backfill per-keyword quarterly counts (tracked_keywords) instead of topic weekly counts.")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    backfill(a.years, a.db, a.force)
+    (backfill_keywords if a.keywords else backfill)(a.years, a.db, a.force)
 
 
 if __name__ == "__main__":
