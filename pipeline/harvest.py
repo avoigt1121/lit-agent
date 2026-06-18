@@ -142,6 +142,53 @@ def _session(contact_email: str, tool_name: str) -> requests.Session:
     return s
 
 
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+def _retry_after(resp: requests.Response) -> float | None:
+    """Seconds from a Retry-After header, if it's the numeric form."""
+    val = resp.headers.get("Retry-After")
+    if not val:
+        return None
+    try:
+        return float(val)
+    except ValueError:
+        return None  # HTTP-date form — fall back to exponential backoff
+
+
+def request_json(session: requests.Session, url: str, params: dict, *,
+                 timeout: int = REQUEST_TIMEOUT, retries: int = 4,
+                 backoff: float = 1.0) -> dict:
+    """GET ``url`` and return parsed JSON, retrying transient failures politely.
+
+    Retries on connection/timeout errors and on HTTP 429/5xx with exponential
+    backoff (honoring a numeric ``Retry-After`` when present) — both robustness
+    and etiquette: back off rather than hammer a struggling API. Raises on the
+    final attempt. Used by the coverage harness and the OpenAlex client; the
+    legacy spike harvesters above keep their inline calls.
+    """
+    for attempt in range(retries + 1):
+        try:
+            resp = session.get(url, params=params, timeout=timeout)
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            if attempt >= retries:
+                raise
+            wait = backoff * (2 ** attempt)
+            logger.warning("%s -> %s; retry %d/%d in %.1fs",
+                           url, type(exc).__name__, attempt + 1, retries, wait)
+            time.sleep(wait)
+            continue
+        if resp.status_code in RETRYABLE_STATUS and attempt < retries:
+            wait = _retry_after(resp) or backoff * (2 ** attempt)
+            logger.warning("%s -> HTTP %d; retry %d/%d in %.1fs",
+                           url, resp.status_code, attempt + 1, retries, wait)
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.json()
+    raise RuntimeError("unreachable: retry loop always returns or raises")
+
+
 # ---------------------------------------------------------------------------
 # Europe PMC  (PRIMARY)
 # ---------------------------------------------------------------------------
