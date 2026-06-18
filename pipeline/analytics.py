@@ -3,11 +3,11 @@ pipeline/analytics.py — rolling coverage trends (Phase 4).
 
 Reads the keyword count time-series (coverage_counts, weekly buckets — see
 pipeline/backfill.py) and computes trailing-window totals + deltas vs the prior
-equal window, for week / month / year:
+equal window, for quarter / year. Week/month were dropped — too noisy and
+indexing-lagged to mean anything; the yearly/quarterly trend is the real signal.
 
-    week  = last 1 weekly bucket   vs the bucket before
-    month = last 4 weekly buckets  vs the prior 4
-    year  = last 52 weekly buckets vs the prior 52
+    quarter = last 13 weekly buckets vs the prior 13
+    year    = last 52 weekly buckets vs the prior 52
 
 Precomputed and cached to data/analytics.json so the Space renders instantly (it
 never recomputes), and a compact "coverage trends" table is rendered into the
@@ -25,7 +25,7 @@ from pathlib import Path
 
 from store import db
 
-WINDOWS = {"week": 1, "month": 4, "year": 52}  # measured in weekly buckets
+WINDOWS = {"quarter": 13, "year": 52}  # measured in weekly buckets
 # Recent weeks undercount until Europe PMC finishes indexing (FIRST_PDATE lag).
 # Drop the most recent LAG_WEEKS complete weeks so every window compares
 # settled-vs-settled data instead of showing a spurious decline.
@@ -86,7 +86,7 @@ def _delta_span(d) -> str:
 
 
 def footer_html(data: dict, profile: dict) -> str:
-    """Compact 'coverage trends' table for the digest (week/month/year + deltas)."""
+    """Compact 'coverage trends' table for the digest (quarter/year + deltas)."""
     series = data.get("series", {})
     order = ["_total"] + [a["id"] for a in profile.get("focus_areas", [])]
     rows = []
@@ -97,7 +97,7 @@ def footer_html(data: dict, profile: dict) -> str:
         cells = "".join(
             f'<td style="padding:2px 10px;text-align:right;white-space:nowrap;">'
             f'{w[win]["current"]}{_delta_span(w[win]["delta"])}</td>'
-            for win in ("week", "month", "year"))
+            for win in ("quarter", "year"))
         weight = "600" if aid == "_total" else "400"
         rows.append(f'<tr><td style="padding:2px 10px;font-weight:{weight};">'
                     f'{_area_name(profile, aid)}</td>{cells}</tr>')
@@ -111,10 +111,9 @@ def footer_html(data: dict, profile: dict) -> str:
         f'as of {data.get("as_of", "")})</span></div>'
         '<table style="border-collapse:collapse;font-size:12px;color:#374151;">'
         '<tr style="color:#6b7280;"><th style="text-align:left;padding:2px 10px;">Area</th>'
-        '<th style="padding:2px 10px;">Week</th><th style="padding:2px 10px;">Month</th>'
-        '<th style="padding:2px 10px;">Year</th></tr>'
+        '<th style="padding:2px 10px;">Quarter</th><th style="padding:2px 10px;">Year</th></tr>'
         + "".join(rows) + '</table>'
         '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Keyword-match counts '
         '(Europe PMC) — a coverage-volume lens, distinct from the curated picks above. '
-        'Month = trailing 4 weeks, Year = trailing 52 weeks. The most recent week(s) '
-        'undercount until Europe PMC finishes indexing; the weekly run revises them.</div></div>')
+        'Quarter = trailing 13 weeks, Year = trailing 52 weeks; recent weeks undercount '
+        'until indexing settles.</div></div>')
