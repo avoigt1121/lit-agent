@@ -59,3 +59,24 @@ preprints:
     - pancreatic tumour
     - pancreatic neoplasm
     - pancreatic carcinoma
+
+# --- ClinicalTrials.gov v2 REST — "translational motion" (Phase F) -------------
+# A SEPARATE, care-relevant signal (NOT a literature source): new PDAC trial
+# registrations + early-phase / first-in-human activity. Queried by the offline
+# pipeline only (pipeline/clinicaltrials.py) — never from the Space. This is its
+# OWN query; it deliberately does not touch the Europe PMC query above.
+#   query_cond  — Essie condition expression (OR + "quoted phrases" supported),
+#                 matched against the trial's conditions.
+#   date_field  — the date the window filters on. StudyFirstPostDate = when the
+#                 registration first went public (the "new trial" signal).
+clinicaltrials:
+  enabled: true
+  base_url: https://clinicaltrials.gov/api/v2/studies
+  query_cond: >-
+    pancreatic ductal adenocarcinoma OR PDAC OR "pancreatic cancer"
+    OR "pancreatic neoplasms" OR "pancreatic carcinoma"
+  date_field: StudyFirstPostDate   # StudyFirstPostDate | LastUpdatePostDate
+  page_size: 1000           # ClinicalTrials.gov v2 max
+  max_pages: 10             # safety cap (1000/page → 10k trials)
+  # overall_status: []      # optional Essie status filter, e.g.
+                            # [RECRUITING, NOT_YET_RECRUITING]; empty = all statuses

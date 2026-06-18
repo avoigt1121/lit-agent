@@ -33,7 +33,7 @@ from pipeline.normalize import normalize_records
 from pipeline.score import Embedder, classify_and_score, embed_corpus, load_interest_profile
 from pipeline.digest import (build_digest_html, write_dry_run, load_recipients,
                              default_subject, deliver, send_test)
-from pipeline import analytics, backfill
+from pipeline import analytics, backfill, clinicaltrials
 from store import db
 from store.vectors import VectorIndex
 
@@ -118,7 +118,9 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
     movers = analytics.keyword_movers(conn, profile)
     conn.close()
     analytics.cache({**adata, "keyword_movers": movers}, ROOT / "data" / "analytics.json")
-    footer = analytics.footer_html(adata, profile) + analytics.keyword_movers_html(movers, profile)
+    footer = (analytics.footer_html(adata, profile)
+              + analytics.keyword_movers_html(movers, profile)
+              + clinicaltrials.motion_html_from_cache())  # Phase F: cached offline; "" if absent
     html_str = build_digest_html(papers, profile, window, client=client,
                                  analytics_html=footer, mode=mode)
     path = write_dry_run(html_str, out_dir=ROOT / "out", date_str=window.get("to"))
@@ -221,6 +223,8 @@ def main() -> None:
     ap.add_argument("--no-send", action="store_true", help="Render the digest but never attempt delivery.")
     ap.add_argument("--no-sync", action="store_true", help="Skip the HF Dataset pull/push.")
     ap.add_argument("--no-coverage", action="store_true", help="Skip refreshing the coverage trend series.")
+    ap.add_argument("--no-trials", action="store_true",
+                    help="Skip the ClinicalTrials.gov translational-motion fetch (Phase F).")
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--index", type=Path, default=DEFAULT_INDEX)
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -279,6 +283,14 @@ def main() -> None:
             backfill.update_recent_keyword_quarters(2, args.db)
         except Exception as exc:  # noqa: BLE001 — don't fail the run on a coverage hiccup
             logger.warning("coverage update skipped: %s", exc)
+
+    if not args.no_trials:
+        try:
+            trials_payload = clinicaltrials.harvest_trials(load_config(), days=args.days)
+            clinicaltrials.cache_motion(trials_payload)
+            logger.info("translational motion: %d new trial registration(s)", trials_payload["count"])
+        except Exception as exc:  # noqa: BLE001 — don't fail the run on a trials hiccup
+            logger.warning("translational-motion update skipped: %s", exc)
 
     if not args.no_digest and not args.no_embed:
         path, html_str = make_digest(window, db_path=args.db, client=client, mode=mode)
