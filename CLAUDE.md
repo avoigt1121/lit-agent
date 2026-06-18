@@ -5,6 +5,18 @@ new open-access PDAC literature to a 5–20-person list, (2) reports which topic
 covered over week/month/year, and (3) runs as a Hugging Face Space chat that answers
 follow-up questions grounded in the papers it ingested.
 
+## Memory maintenance (after every commit)
+
+This repo is **standalone**: it has no `memory.md`/`TODO.md` and is **not** part of
+`SHOWCASE_STATUS.md`. So the only living doc to keep current is this file. After a
+`git commit` that changes scope, settles an open question, or alters the build plan,
+update the relevant section here (e.g. "Decisions resolved", "Decisions still open").
+Skip it for routine code commits.
+
+A global PostToolUse hook (`~/.claude/hooks/remind-memory-sync.py`, in
+`~/.claude/settings.json`) prints this reminder automatically after each commit in this
+repo. It only *reminds* — the edit is manual.
+
 ## Hard constraints (do not violate without being asked)
 
 - **Standalone.** The repos under "Reference repositories" are STRUCTURAL REFERENCES
