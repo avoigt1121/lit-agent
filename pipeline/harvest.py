@@ -164,8 +164,9 @@ def request_json(session: requests.Session, url: str, params: dict, *,
     Retries on connection/timeout errors and on HTTP 429/5xx with exponential
     backoff (honoring a numeric ``Retry-After`` when present) — both robustness
     and etiquette: back off rather than hammer a struggling API. Raises on the
-    final attempt. Used by the coverage harness and the OpenAlex client; the
-    legacy spike harvesters above keep their inline calls.
+    final attempt. Used by the Europe PMC harvest (the census makes ~60 sequential
+    window calls, so a transient 5xx must not abort the run), the coverage harness,
+    and the OpenAlex client.
     """
     for attempt in range(retries + 1):
         try:
@@ -220,9 +221,7 @@ def harvest_europepmc(cfg: dict, date_from: str, date_to: str,
             "resultType": result_type,
             "cursorMark": cursor,
         }
-        resp = session.get(base, params=params, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
+        data = request_json(session, base, params)
         hits = data.get("resultList", {}).get("result", []) or []
         if not hits:
             break
