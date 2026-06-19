@@ -118,8 +118,9 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
     movers = analytics.keyword_movers(conn, profile)
     conn.close()
     analytics.cache({**adata, "keyword_movers": movers}, ROOT / "data" / "analytics.json")
+    pdac_query = load_config().get("europepmc", {}).get("query", "")
     footer = (analytics.footer_html(adata, profile)
-              + analytics.keyword_movers_html(movers, profile)
+              + analytics.keyword_movers_html(movers, profile, pdac_query=pdac_query)
               + clinicaltrials.motion_html_from_cache())  # Phase F: cached offline; "" if absent
     html_str = build_digest_html(papers, profile, window, client=client,
                                  analytics_html=footer, mode=mode)

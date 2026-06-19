@@ -2,17 +2,24 @@
 pipeline/analytics.py — rolling coverage trends (Phase 4).
 
 Reads the keyword count time-series (coverage_counts, weekly buckets — see
-pipeline/backfill.py) and computes trailing-window totals + deltas vs the prior
-equal window, for quarter / year. Week/month were dropped — too noisy and
-indexing-lagged to mean anything; the yearly/quarterly trend is the real signal.
+pipeline/backfill.py) and computes, per series, trailing-window totals + deltas
+and SHARE OF VOICE (each area as a fraction of all PDAC papers).
 
-    quarter = last 13 weekly buckets vs the prior 13
+    quarter = last 13 weekly buckets vs the prior 13   (kept in JSON; not headlined)
     year    = last 52 weekly buckets vs the prior 52
+    share   = area / _total, trailing year vs prior year (Δ in percentage points)
 
 Precomputed and cached to data/analytics.json so the Space renders instantly (it
-never recomputes), and a compact "coverage trends" table is rendered into the
-digest. These are a coverage-VOLUME lens (keyword hitCounts), distinct from the
-digest's embedding+LLM curation.
+never recomputes). Two blocks render into the digest, both a coverage-VOLUME lens
+(keyword hitCounts), distinct from the digest's embedding+LLM curation:
+
+  Concept A — footer_html(): a share-of-voice leaderboard with a per-area trend
+    sparkline. Share of voice is the headline because it cancels the field's
+    overall growth AND Europe PMC indexing lag (both hit numerator and the
+    _total denominator equally), so it shows real shifts in attention rather
+    than the spurious ~20% "decline" a raw trailing-13-week quarter shows.
+  Concept B — keyword_movers_html(): the fastest-rising specific terms as a
+    ranked bar strip, each linking to the Europe PMC papers behind the count.
 
 Roadmap (CLAUDE.md "Post-v1 roadmap"): per-area series stay first-class so the
 Space can render one tab per area off this same cache.
@@ -20,15 +27,21 @@ Space can render one tab per area off this same cache.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+import math
+import urllib.parse
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from store import db
 
 WINDOWS = {"quarter": 13, "year": 52}  # measured in weekly buckets
+SPARK_WEEKS = 52  # trailing weekly volume kept per series for the digest sparkline
 # Recent weeks undercount until Europe PMC finishes indexing (FIRST_PDATE lag).
 # Drop the most recent LAG_WEEKS complete weeks so every window compares
-# settled-vs-settled data instead of showing a spurious decline.
+# settled-vs-settled data. Even so, a raw trailing-13-week "quarter" sits almost
+# entirely inside the lag zone and reads as a spurious ~20% drop — so the digest
+# headlines SHARE OF VOICE (lag-robust; see module docstring) and keeps the raw
+# quarter only in the JSON for the Space/debugging.
 LAG_WEEKS = 2
 
 
@@ -55,8 +68,28 @@ def compute_trends(conn, today: date | None = None) -> dict:
             prior = sum(counts[-2 * n:-n]) if len(counts) >= 2 * n else None
             wins[name] = {"current": cur, "prior": prior,
                           "delta": (cur - prior) if prior is not None else None}
+        wins["spark"] = counts[-SPARK_WEEKS:]  # trailing weekly volume for the sparkline
         out["series"][area] = wins
+    _add_share_of_voice(out)
     return out
+
+
+def _add_share_of_voice(out: dict) -> None:
+    """Annotate each series with share of voice vs the _total denominator.
+
+    share = area papers / all-PDAC papers, trailing year and prior year; delta
+    is in percentage POINTS. This is the lag-robust headline metric: indexing
+    lag and overall growth scale numerator and denominator together.
+    """
+    ty = out["series"].get("_total", {}).get("year", {})
+    tc, tp = ty.get("current"), ty.get("prior")
+    for w in out["series"].values():
+        y = w.get("year", {})
+        sc = round(y["current"] / tc * 100, 1) if tc else None
+        sp = (round(y["prior"] / tp * 100, 1)
+              if (tp and y.get("prior") is not None) else None)
+        w["share"] = {"current": sc, "prior": sp,
+                      "delta": (round(sc - sp, 1) if (sc is not None and sp is not None) else None)}
 
 
 def cache(data: dict, path: str | Path = "data/analytics.json") -> Path:
@@ -75,48 +108,101 @@ def _area_name(profile: dict, area_id: str) -> str:
     return area_id
 
 
-def _delta_span(d) -> str:
+def _pp_span(d) -> str:
+    """Percentage-point delta badge (share-of-voice change vs prior year)."""
     if d is None:
-        return ' <span style="color:#9ca3af;">—</span>'
-    if d > 0:
-        return f' <span style="color:#059669;">▲{d}</span>'
-    if d < 0:
-        return f' <span style="color:#dc2626;">▼{abs(d)}</span>'
-    return ' <span style="color:#9ca3af;">0</span>'
+        return '<span style="color:#9ca3af;font-size:12px;">—</span>'
+    if d > 0.05:
+        return f'<span style="color:#059669;font-size:12px;">▲{d:.1f}pp</span>'
+    if d < -0.05:
+        return f'<span style="color:#dc2626;font-size:12px;">▼{abs(d):.1f}pp</span>'
+    return '<span style="color:#9ca3af;font-size:12px;">0pp</span>'
+
+
+def _yoy_pct(win: dict):
+    c, p = win.get("current"), win.get("prior")
+    return round((c - p) / p * 100) if p else None
+
+
+def _chunk_sum(vals: list[int], bars: int = 13) -> list[int]:
+    """Aggregate a weekly series into ~`bars` equal buckets (e.g. 52wk -> 13)."""
+    if not vals:
+        return []
+    size = max(1, math.ceil(len(vals) / bars))
+    return [sum(vals[i:i + size]) for i in range(0, len(vals), size)][-bars:]
+
+
+def _sparkbars(counts: list[int], bars: int = 13, h: int = 26, bw: int = 5) -> str:
+    """Email-safe mini bar chart (Gmail strips inline SVG; table cells survive).
+
+    Each bar scaled to the series' own max, so it shows that area's trajectory.
+    """
+    vals = _chunk_sum(counts, bars)
+    if not vals:
+        return ""
+    vmax = max(vals) or 1
+    cells = "".join(
+        f'<td valign="bottom" style="padding:0 1px;">'
+        f'<div style="width:{bw}px;height:{max(2, round(v / vmax * (h - 2)))}px;'
+        f'background:#9bc1e8;font-size:0;line-height:0;">&nbsp;</div></td>'
+        for v in vals)
+    return (f'<table cellpadding="0" cellspacing="0" role="presentation" '
+            f'style="border-collapse:collapse;height:{h}px;"><tr>{cells}</tr></table>')
 
 
 def footer_html(data: dict, profile: dict) -> str:
-    """Compact 'coverage trends' table for the digest (quarter/year + deltas)."""
+    """Concept A — share-of-voice leaderboard + per-area trend sparkline."""
     series = data.get("series", {})
-    order = ["_total"] + [a["id"] for a in profile.get("focus_areas", [])]
-    rows = []
-    for aid in order:
-        w = series.get(aid)
-        if not w:
-            continue
-        cells = "".join(
-            f'<td style="padding:2px 10px;text-align:right;white-space:nowrap;">'
-            f'{w[win]["current"]}{_delta_span(w[win]["delta"])}</td>'
-            for win in ("quarter", "year"))
-        weight = "600" if aid == "_total" else "400"
-        rows.append(f'<tr><td style="padding:2px 10px;font-weight:{weight};">'
-                    f'{_area_name(profile, aid)}</td>{cells}</tr>')
-    if not rows:
+    rows_data = [(a["name"], series[a["id"]]) for a in profile.get("focus_areas", [])
+                 if series.get(a["id"])]
+    if not rows_data:
         return ('<div style="font-size:12px;color:#6b7280;margin:18px 0;">No coverage trend data '
                 'yet — run <code>python -m pipeline.backfill</code>.</div>')
+    # Lead with who is gaining ground: sort by share-of-voice change (None last).
+    rows_data.sort(key=lambda t: (t[1].get("share", {}).get("delta") is not None,
+                                  t[1].get("share", {}).get("delta") or 0.0), reverse=True)
+
+    body = []
+    for name, w in rows_data:
+        sh = w.get("share", {})
+        cur = sh.get("current")
+        share_txt = f'{cur:.1f}%' if cur is not None else '—'
+        body.append(
+            '<tr>'
+            f'<td style="padding:6px 10px;font-size:12px;color:#374151;">{name}</td>'
+            f'<td style="padding:6px 10px;">{_sparkbars(w.get("spark") or [])}</td>'
+            f'<td style="padding:6px 10px;text-align:right;font-size:13px;font-weight:600;'
+            f'color:#111;white-space:nowrap;">{share_txt}</td>'
+            f'<td style="padding:6px 10px;text-align:right;white-space:nowrap;">'
+            f'{_pp_span(sh.get("delta"))}</td></tr>')
+
+    ty = series.get("_total", {}).get("year", {})
+    ctx = ""
+    if ty.get("current") is not None:
+        yoy = _yoy_pct(ty)
+        yoy_txt = (f' · <span style="color:#059669;">▲{yoy}% YoY</span>' if (yoy and yoy > 0)
+                   else (f' · <span style="color:#dc2626;">▼{abs(yoy)}% YoY</span>' if yoy else ''))
+        ctx = (f'<div style="font-size:12px;color:#6b7280;margin:2px 0 8px;">All PDAC: '
+               f'{ty["current"]:,} papers in the trailing year{yoy_txt}</div>')
+
     return (
         '<div style="margin:18px 0;">'
-        '<div style="font-size:13px;font-weight:600;margin-bottom:4px;">Coverage trends '
-        f'<span style="font-weight:400;color:#6b7280;">(papers per period · Δ vs prior · '
-        f'as of {data.get("as_of", "")})</span></div>'
+        '<div style="font-size:13px;font-weight:600;margin-bottom:2px;">Coverage by focus area '
+        f'<span style="font-weight:400;color:#6b7280;">(share of all PDAC papers · 12-mo trend · '
+        f'Δ vs prior year · as of {data.get("as_of", "")})</span></div>'
+        + ctx +
         '<table style="border-collapse:collapse;font-size:12px;color:#374151;">'
-        '<tr style="color:#6b7280;"><th style="text-align:left;padding:2px 10px;">Area</th>'
-        '<th style="padding:2px 10px;">Quarter</th><th style="padding:2px 10px;">Year</th></tr>'
-        + "".join(rows) + '</table>'
-        '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Keyword-match counts '
-        '(Europe PMC) — a coverage-volume lens, distinct from the curated picks above. '
-        'Quarter = trailing 13 weeks, Year = trailing 52 weeks; recent weeks undercount '
-        'until indexing settles.</div></div>')
+        '<tr style="color:#6b7280;">'
+        '<th style="text-align:left;padding:2px 10px;">Area</th>'
+        '<th style="text-align:left;padding:2px 10px;">Trend (12 mo)</th>'
+        '<th style="padding:2px 10px;text-align:right;">Share</th>'
+        '<th style="padding:2px 10px;text-align:right;">Δ vs last yr</th></tr>'
+        + "".join(body) + '</table>'
+        '<div style="font-size:11px;color:#9ca3af;margin-top:6px;">Share of voice = an area\'s '
+        'papers as a fraction of all PDAC papers (Europe PMC keyword match), trailing 12 months '
+        'vs the prior 12 — it cancels the field\'s overall growth and indexing lag, so it reflects '
+        'real shifts in attention. Bars show each area\'s own weekly volume over the year '
+        '(scaled to itself).</div></div>')
 
 
 # ---------------------------------------------------------------------------
@@ -149,29 +235,49 @@ def keyword_movers(conn, profile: dict, top_n: int = 3) -> dict:
     return out
 
 
-def keyword_movers_html(movers: dict, profile: dict) -> str:
-    """Compact per-area 'keyword movers' list for the digest (specific terms only)."""
+def keyword_movers_html(movers: dict, profile: dict, pdac_query: str | None = None,
+                        today: date | None = None, top_n: int = 8) -> str:
+    """Concept B — 'what's heating up': the fastest-rising specific terms across
+    all areas, as a ranked bar strip. Each term links to the Europe PMC papers
+    behind the count (when the PDAC query is supplied)."""
     name = {a["id"]: a["name"] for a in profile.get("focus_areas", [])}
-    items = []
-    for aid in [a["id"] for a in profile.get("focus_areas", [])]:
-        ms = movers.get(aid)
-        if not ms:
-            continue
-        parts = []
-        for m in ms:
-            arrow = ""
-            if m["pct"] is not None and m["pct"] > 0:
-                arrow = f' <span style="color:#059669;">▲{m["pct"]}%</span>'
-            elif m["pct"] is not None and m["pct"] < 0:
-                arrow = f' <span style="color:#dc2626;">▼{abs(m["pct"])}%</span>'
-            parts.append(f'{m["keyword"]} ({m["cur"]}){arrow}')
-        items.append(f'<li style="margin:3px 0;"><b style="font-weight:500;">{name.get(aid, aid)}:</b> '
-                     f'{" · ".join(parts)}</li>')
-    if not items:
+    flat = [(aid, m) for aid, ms in (movers or {}).items() for m in ms
+            if m.get("pct") is not None]
+    if not flat:
         return ""
-    return ('<div style="margin:16px 0;">'
-            '<div style="font-size:13px;font-weight:600;margin-bottom:4px;">Keyword movers '
-            '<span style="font-weight:400;color:#6b7280;">(specific terms · last 12 mo count · '
-            '▲ vs prior 12 mo)</span></div>'
-            f'<ul style="margin:0;padding-left:18px;font-size:12px;color:#374151;list-style:disc;">'
-            f'{"".join(items)}</ul></div>')
+    flat.sort(key=lambda t: t[1]["pct"], reverse=True)
+    flat = flat[:top_n]
+    maxpct = max(m["pct"] for _, m in flat) or 1
+    today = today or date.today()
+    start, end = (today - timedelta(days=365)).isoformat(), today.isoformat()
+
+    rows = []
+    for aid, m in flat:
+        kw = m["keyword"]
+        label = (f'<a href="{_epmc_link(pdac_query, kw, start, end)}" '
+                 f'style="color:#1d4ed8;text-decoration:none;">{kw}</a>' if pdac_query else kw)
+        wpct = max(6, round(m["pct"] / maxpct * 100))
+        rows.append(
+            '<tr>'
+            f'<td style="padding:4px 10px 4px 0;font-size:13px;white-space:nowrap;">{label} '
+            f'<span style="font-size:11px;color:#9ca3af;">{name.get(aid, aid)}</span></td>'
+            '<td style="padding:4px 0;width:55%;">'
+            '<div style="background:#f3f4f6;border-radius:3px;">'
+            f'<div style="width:{wpct}%;height:14px;background:#f0997b;border-radius:3px;'
+            'font-size:0;line-height:0;">&nbsp;</div></div></td>'
+            f'<td style="padding:4px 0 4px 10px;text-align:right;font-size:13px;font-weight:600;'
+            f'color:#b45309;white-space:nowrap;">+{m["pct"]}%</td></tr>')
+    return (
+        '<div style="margin:16px 0;">'
+        '<div style="font-size:13px;font-weight:600;margin-bottom:4px;">What\'s heating up '
+        '<span style="font-weight:400;color:#6b7280;">(fastest-rising terms · last 12 mo vs '
+        'prior 12 mo' + (' · click a term for the papers' if pdac_query else '') + ')</span></div>'
+        '<table style="border-collapse:collapse;width:100%;max-width:520px;">'
+        + "".join(rows) + '</table></div>')
+
+
+def _epmc_link(pdac_query: str, term: str, start: str, end: str) -> str:
+    """Europe PMC website search reproducing a tracked term's recent papers."""
+    tq = f'"{term}"' if " " in term else term
+    q = f'({" ".join(pdac_query.split())}) AND {tq} AND (FIRST_PDATE:[{start} TO {end}])'
+    return "https://europepmc.org/search?query=" + urllib.parse.quote(q)
