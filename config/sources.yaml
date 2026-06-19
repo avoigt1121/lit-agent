@@ -80,3 +80,52 @@ clinicaltrials:
   max_pages: 10             # safety cap (1000/page → 10k trials)
   # overall_status: []      # optional Essie status filter, e.g.
                             # [RECRUITING, NOT_YET_RECRUITING]; empty = all statuses
+
+# --- OpenAlex — coverage cross-check + citation backstop (NOT a harvest source) -
+# Used by scripts/coverage_check.py to triangulate the Europe PMC query (feeds the
+# provenance block below) and reused by Phase D for the "N papers cite your work"
+# signal (pipeline/openalex.py). NOT a literature feed — the offline harvest never
+# pulls from it. Polite pool: the top-level contact_email is sent as `mailto`.
+# All keys are optional; the values shown are the code defaults.
+openalex:
+  # search:  (optional) OpenAlex search expression to use INSTEAD of the one
+  #          derived from europepmc.query. Unset = derive it (outer parens
+  #          stripped) so both sides run the same query.
+  search_field: title_and_abstract   # .search field. NOT default.search — that also
+                                     #   matches full text and massively over-counts.
+  types: article|review|preprint     # primary-literature types comparable to MEDLINE
+                                     #   (excludes book chapters, datasets, peer reviews);
+                                     #   set to 'all' to disable the type filter.
+  date_field: publication_date       # OpenAlex date filter (the EPMC side uses FIRST_PDATE).
+
+# >>> provenance: measured coverage — auto-written by scripts/coverage_check.py >>>
+# Do NOT hand-edit; re-run `python scripts/coverage_check.py` to refresh.
+# measured_recall is THIS system's self-measured number — never hardcode the
+# ~98% figure (a study of OpenAlex vs guideline-cited papers, not this query;
+# see CAPABILITIES.md §3.5).
+provenance:
+  measured_recall: 0.7604
+  denominator: fraction of the EPMC + OpenAlex DOI union returned by EPMC
+  denominator_source: OpenAlex cross-check
+  as_of: '2026-06-18'
+  window:
+    from: '2025-05-19'
+    to: '2026-05-19'
+  method:
+    openalex_search_field: title_and_abstract
+    openalex_types: article|review|preprint
+    openalex_query: pancreatic ductal adenocarcinoma OR PDAC OR "pancreatic cancer"
+      OR "pancreatic neoplasms" OR "pancreatic carcinoma"
+  epmc_doi_count: 10594
+  openalex_doi_count: 6483
+  overlap: 3145
+  union: 13932
+  note: 'Self-measured by scripts/coverage_check.py over the window above. NOT the
+    published ~98% OpenAlex/guideline figure (CAPABILITIES.md §3.5). Denominator =
+    DOI union of EPMC and OpenAlex (types: article|review|preprint). Spot-checks show
+    the EPMC-absent remainder is dominated by conference/meeting abstracts and repository
+    deposits (Figshare/Zenodo) that OpenAlex types as ''article'' but MEDLINE/PMC
+    does not index as primary literature; date-field semantics is a minor contributor.
+    So this is a CONSERVATIVE lower bound on EPMC''s recall of peer-reviewed PDAC
+    papers, not a 24% gap in research coverage. Re-run after any change to europepmc.query.'
+# <<< provenance <<<
