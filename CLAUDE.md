@@ -66,6 +66,7 @@ lit-agent/
     score.py              # embed + classify into focus areas + relevance score
     digest.py             # compose + render HTML + send (--dry-run flag)
     analytics.py          # week/month/year aggregations
+    clinicaltrials.py     # ClinicalTrials.gov v2 feed — "translational motion" signal (Phase F)
     run_weekly.py         # orchestrates harvest -> ... -> digest -> analytics
   store/
     db.py                 # SQLite schema + read/write
@@ -87,6 +88,11 @@ lit-agent/
 - **Europe PMC REST** — PRIMARY (all PubMed + OA full text + text-mined annotations).
 - **PubMed E-utilities** — secondary; MeSH tags. Cap 3 req/s (10 with a free API key).
 - **bioRxiv / medRxiv API** — REQUIRED for recency; `details` endpoint, paginated.
+- **ClinicalTrials.gov v2 REST** — a SEPARATE "translational motion" signal, NOT a
+  literature source: new PDAC trial registrations + early-phase / first-in-human
+  activity (a care-relevant headline for a Center for *Care*). Offline pipeline only;
+  has its own `clinicaltrials:` query block in `config/sources.yaml` and deliberately
+  does not touch the Europe PMC literature query.
 
 Use one saved, version-controlled PDAC query in `config/sources.yaml` so coverage is
 reproducible.
