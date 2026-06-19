@@ -22,6 +22,7 @@ class VectorIndex:
         self._ids: list[str] = []
         self._rows: list[np.ndarray] = []   # staged adds before finalize
         self._matrix: np.ndarray | None = None  # finalized (n, dim), normalized
+        self._id_set: set[str] | None = None    # lazy membership cache (see __contains__)
 
     @staticmethod
     def _normalize(v: np.ndarray) -> np.ndarray:
@@ -37,7 +38,8 @@ class VectorIndex:
             raise ValueError(f"dim mismatch: got {v.shape[0]}, expected {self.dim}")
         self._ids.append(embedding_id)
         self._rows.append(v)
-        self._matrix = None  # invalidate
+        self._matrix = None   # invalidate finalized cache
+        self._id_set = None   # invalidate membership cache
 
     def _finalize(self) -> None:
         if self._matrix is None:
@@ -66,6 +68,17 @@ class VectorIndex:
     def __len__(self) -> int:
         return len(self._ids)
 
+    def __contains__(self, embedding_id: str) -> bool:
+        """Membership test so a resumable backfill can skip already-indexed ids.
+
+        A census reloads the index, reprocesses the current (partial) window, and
+        re-embeds its papers — without this guard `add()` would append duplicate
+        rows for ids already present (it does not de-dupe). Built lazily and cached;
+        invalidated on add()."""
+        if self._id_set is None or len(self._id_set) != len(self._ids):
+            self._id_set = set(self._ids)
+        return embedding_id in self._id_set
+
     def save(self, path: str | Path) -> None:
         self._finalize()
         path = Path(path)
@@ -77,6 +90,13 @@ class VectorIndex:
         data = np.load(Path(path), allow_pickle=True)
         idx = cls()
         idx._ids = list(data["ids"])
-        idx._matrix = data["vectors"].astype(np.float32)
-        idx.dim = idx._matrix.shape[1] if idx._matrix.size else None
+        matrix = data["vectors"].astype(np.float32)
+        # Seed the staging buffer from the loaded matrix so add()-after-load
+        # EXTENDS the index instead of replacing it. _finalize() rebuilds
+        # _matrix from _rows, so a resumable backfill (load -> add -> save) must
+        # find the loaded vectors already staged in _rows, or it silently drops
+        # them and save() persists only the newly-added ones.
+        idx._rows = [row for row in matrix]
+        idx._matrix = matrix  # keep the finalized cache valid until the next add()
+        idx.dim = matrix.shape[1] if matrix.size else None
         return idx
