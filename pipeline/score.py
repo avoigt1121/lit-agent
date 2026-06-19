@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -39,8 +40,25 @@ class Embedder:
             self._model = TextEmbedding(self.model_name)
         return self._model
 
-    def embed_passages(self, texts: list[str]) -> np.ndarray:
+    def embed_passages(self, texts: list[str], *, batch_size: int = 0,
+                       cooldown: float = 0.0) -> np.ndarray:
+        """Embed texts. Default: one batched fastembed call (fast, no pauses).
+
+        For a long offline backfill on a *fanless* Mac, pass batch_size + cooldown:
+        the texts are embedded in batch_size-sized bursts with a `cooldown`-second
+        pause between bursts. This keeps the chip below its thermal-throttle knee and
+        sustains ~4-5 docs/s instead of collapsing to ~1 (see pipeline/census.py).
+        Leave OFF (0) for the weekly pipeline and the latency-sensitive Q&A query path.
+        """
         model = self._ensure()
+        if batch_size > 0 and len(texts) > batch_size:
+            chunks: list[np.ndarray] = []
+            for i in range(0, len(texts), batch_size):
+                chunks.append(np.array(list(model.embed(texts[i:i + batch_size])),
+                                       dtype=np.float32))
+                if cooldown > 0 and i + batch_size < len(texts):
+                    time.sleep(cooldown)
+            return np.vstack(chunks)
         return np.array(list(model.embed(texts)), dtype=np.float32)
 
     def embed_query(self, text: str) -> np.ndarray:
@@ -55,15 +73,18 @@ def _embed_text(rec: dict) -> str:
     return f"{title}\n\n{abstract}".strip() or title or "(no text)"
 
 
-def embed_corpus(records: list[dict], embedder: Embedder | None = None) -> dict[str, np.ndarray]:
+def embed_corpus(records: list[dict], embedder: Embedder | None = None, *,
+                 batch_size: int = 0, cooldown: float = 0.0) -> dict[str, np.ndarray]:
     """Embed every record's text; set embedding_id (== paper_id) on each record.
 
     Returns {embedding_id: vector}. Records lacking an abstract are still embedded
-    on the title so they remain retrievable (with weaker signal).
+    on the title so they remain retrievable (with weaker signal). ``batch_size`` /
+    ``cooldown`` are passed through to ``embed_passages`` for the census's
+    thermal-throttle-aware backfill (default off — one batched call).
     """
     embedder = embedder or Embedder()
     texts = [_embed_text(r) for r in records]
-    vectors = embedder.embed_passages(texts)
+    vectors = embedder.embed_passages(texts, batch_size=batch_size, cooldown=cooldown)
     out: dict[str, np.ndarray] = {}
     for rec, vec in zip(records, vectors):
         eid = rec["paper_id"]

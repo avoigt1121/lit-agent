@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -67,6 +68,14 @@ DEFAULT_INDEX = ROOT / "data" / "vectors.npz"
 PROFILE_PATH = ROOT / "config" / "interest_profile.yaml"
 
 SOURCE = "europepmc"
+
+# Throttle-aware embedding for the long backfill. On a fanless Mac (e.g. M3 Air),
+# embedding the whole corpus pegs the cores and thermal-throttles from ~10 docs/s to
+# ~1 after the first ~10 s. Embedding in EMBED_CHUNK bursts with EMBED_COOLDOWN s
+# between lets the chip recover and sustains ~4.5 docs/s (~3 h for 5 yr vs ~12 h).
+# Tunable via env; set CENSUS_EMBED_COOLDOWN=0 on a fan-equipped / Linux runner.
+EMBED_CHUNK = int(os.environ.get("CENSUS_EMBED_CHUNK", "100"))
+EMBED_COOLDOWN = float(os.environ.get("CENSUS_EMBED_COOLDOWN", "15"))
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +188,9 @@ def census(years: int = 5, *, db_path: Path = DEFAULT_DB, index_path: Path = DEF
     logger.info("Census %s..%s: %d month windows (%d to do, %d complete) | corpus=%d vectors=%d",
                 start.isoformat(), today.isoformat(), len(windows), len(todo),
                 len(windows) - len(todo), start_total, len(index))
+    if EMBED_COOLDOWN > 0:
+        logger.info("Throttle-aware embedding: %d-doc bursts, %.0fs cooldown (~4.5 docs/s on a fanless Mac)",
+                    EMBED_CHUNK, EMBED_COOLDOWN)
 
     n_new_total = 0
     for i, (ws, we, complete) in enumerate(todo, 1):
@@ -198,7 +210,8 @@ def census(years: int = 5, *, db_path: Path = DEFAULT_DB, index_path: Path = DEF
         for r in deduped:
             r["embedding_id"] = r["paper_id"]  # 1:1 for abstract embeddings
 
-        vectors = embed_corpus(deduped, embedder)
+        vectors = embed_corpus(deduped, embedder, batch_size=EMBED_CHUNK,
+                               cooldown=EMBED_COOLDOWN)
         # Key-free area tagging (embedding similarity only) — ~0 added cost (§1.3).
         tags = classify_and_score(deduped, vectors, profile, embedder, client=None)
 
