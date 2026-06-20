@@ -32,6 +32,18 @@ EXAMPLES = [
     "Any new early-detection or liquid-biopsy biomarker studies?",
 ]
 
+# Shown when retrieval finds nothing above the similarity floor — i.e. an
+# off-topic or meta question ("what can you do", "what can I ask"). Without this,
+# the bot used to feed the corpus's least-bad noise (reply letters, "Talks") to
+# the grounding prompt and answer ABOUT the noise.
+ORIENTATION = (
+    "I answer questions grounded in the ingested **PDAC literature corpus** — "
+    "every claim cited by DOI, strictly from retrieved abstracts. I couldn't find "
+    "papers matching that, which usually means it was a general/meta question "
+    "rather than a literature search. Try a topical PDAC question, e.g.:\n\n"
+    + "\n".join(f"- {q}" for q in EXAMPLES)
+)
+
 
 class LitAgentUI:
     def __init__(self):
@@ -88,9 +100,10 @@ class LitAgentUI:
         sources = self._sources_md(passages)
 
         if not passages:
-            history[-1]["content"] = ("I couldn't find any matching papers in the ingested corpus"
-                                      + (" for that window." if since else ".")
-                                      + " Try rephrasing or widening the time filter.")
+            msg_out = ORIENTATION
+            if since:
+                msg_out += ("\n\n_(A time filter is active — widening it may also help.)_")
+            history[-1]["content"] = msg_out
             yield history, "", sources
             return
 
@@ -118,7 +131,7 @@ class LitAgentUI:
             return "Please provide a question."
         passages = self._retriever.retrieve(question, k=6)
         if not passages:
-            return "No matching papers in the ingested PDAC corpus for that question."
+            return ORIENTATION
         if self._client is None:
             return "No API key configured for synthesis. Most relevant passages:\n\n" + self._sources_md(passages)
         return qa_answer.answer(question, passages, self._client)

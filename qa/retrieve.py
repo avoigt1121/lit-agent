@@ -12,6 +12,7 @@ refuse fabricating methods that aren't in the abstract.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +23,14 @@ from store.vectors import VectorIndex
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = ROOT / "data" / "corpus.sqlite"
 DEFAULT_INDEX = ROOT / "data" / "vectors.npz"
+
+# Minimum cosine similarity for a passage to count as a real match. Genuine
+# topical hits in this BGE-small corpus score ~0.83+; noise/meta queries ("what
+# can you do") return their nearest neighbours at ~0.5-0.63 — letters, "Talks",
+# "Issue Information", ChatGPT/Q&A papers. Without this floor those got fed to the
+# grounding prompt and the model dutifully answered ABOUT the noise. Configurable
+# via RETRIEVAL_MIN_SCORE.
+DEFAULT_MIN_SCORE = float(os.environ.get("RETRIEVAL_MIN_SCORE", "0.70"))
 
 
 @dataclass
@@ -48,13 +57,26 @@ class Retriever:
         self._papers = {p["paper_id"]: p for p in db.iter_papers(self.conn)}
 
     def retrieve(self, query: str, k: int = 6, since: str | None = None,
-                 paper_id: str | None = None) -> list[Passage]:
+                 paper_id: str | None = None,
+                 min_score: float | None = None) -> list[Passage]:
         """Top-k passages by cosine similarity, optionally filtered by paper or
-        first_seen_date >= `since` (YYYY-MM-DD)."""
+        first_seen_date >= `since` (YYYY-MM-DD).
+
+        Passages scoring below `min_score` (default ``DEFAULT_MIN_SCORE``) are
+        dropped — so an off-topic or meta query ("what can you do") returns ``[]``
+        rather than the corpus's least-bad noise. Pass a paper_id filter to bypass
+        the floor for "drill into this specific paper" lookups.
+        """
+        floor = DEFAULT_MIN_SCORE if min_score is None else min_score
+        if paper_id is not None:
+            floor = -1.0  # explicit single-paper lookup: never gate on similarity
         qv = self.embedder.embed_query(query)
-        fetch = k * 5 if (since or paper_id) else k  # over-fetch when filtering
+        # Over-fetch when filtering OR gating, so the floor doesn't starve k.
+        fetch = k * 5 if (since or paper_id or floor > -1.0) else k
         out: list[Passage] = []
         for pid, score in self.index.search(qv, k=fetch):
+            if score < floor:
+                break  # search() returns descending score — nothing better remains
             p = self._papers.get(pid)
             if p is None:
                 continue
