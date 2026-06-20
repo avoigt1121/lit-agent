@@ -18,9 +18,19 @@ tool_name: bcc-lit-agent
 europepmc:
   enabled: true
   base_url: https://www.ebi.ac.uk/europepmc/webservices/rest/search
+  # The first clause is the topical vocabulary (kept stable for reproducibility);
+  # the second clause ANCHORS it to TITLE/ABSTRACT so a paper only counts when PDAC
+  # is its subject, not merely cited in its full text or references. Without the
+  # anchor, EPMC's default all-fields match swept in off-topic papers (e.g. a
+  # breast-cancer survey, a ChatGPT-on-pancreatitis note) — see the Phase A census
+  # cleanup (scripts/cleanup_corpus.py). `pancrea*` keeps adjectival/mechanism
+  # phrasings ("pancreatic <gene>", "pancreatic tumour"); the bare PDAC token is
+  # added because the wildcard does not expand the acronym. Re-run
+  # scripts/coverage_check.py after editing (refreshes the provenance block).
   query: >-
     (pancreatic ductal adenocarcinoma OR PDAC OR "pancreatic cancer"
      OR "pancreatic neoplasms" OR "pancreatic carcinoma")
+    AND (TITLE:pancrea* OR ABSTRACT:pancrea* OR TITLE:PDAC OR ABSTRACT:PDAC)
   date_field: FIRST_PDATE   # FIRST_PDATE (first publication) | CREATION_DATE
   page_size: 1000           # Europe PMC max
   result_type: core         # core => abstract, authors, MeSH, OA flags
@@ -88,9 +98,14 @@ clinicaltrials:
 # pulls from it. Polite pool: the top-level contact_email is sent as `mailto`.
 # All keys are optional; the values shown are the code defaults.
 openalex:
-  # search:  (optional) OpenAlex search expression to use INSTEAD of the one
-  #          derived from europepmc.query. Unset = derive it (outer parens
-  #          stripped) so both sides run the same query.
+  # search:  OpenAlex search expression used INSTEAD of deriving one from
+  #          europepmc.query. Pinned explicitly now that the EPMC query carries a
+  #          TITLE:/ABSTRACT: anchor clause (EPMC field syntax OpenAlex can't parse);
+  #          OpenAlex's .search is already title+abstract-scoped (search_field below),
+  #          so the bare topical vocabulary is the equivalent both sides can run.
+  search: >-
+    pancreatic ductal adenocarcinoma OR PDAC OR "pancreatic cancer"
+    OR "pancreatic neoplasms" OR "pancreatic carcinoma"
   search_field: title_and_abstract   # .search field. NOT default.search — that also
                                      #   matches full text and massively over-counts.
   types: article|review|preprint     # primary-literature types comparable to MEDLINE

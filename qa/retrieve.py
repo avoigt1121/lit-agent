@@ -39,6 +39,7 @@ class Passage:
     doi: str | None
     title: str | None
     text: str | None              # the grounding text (abstract)
+    authors: list[str]            # for attribution in the answer's citation
     journal_or_server: str | None
     published_date: str | None
     is_oa: bool
@@ -54,7 +55,11 @@ class Retriever:
         self.conn = db.connect(db_path)
         self.index = VectorIndex.load(index_path)
         self.embedder = embedder or Embedder()
-        self._papers = {p["paper_id"]: p for p in db.iter_papers(self.conn)}
+        # Skip quarantined rows (off-topic / abstract-less): they keep their
+        # vectors in the index but never enter _papers, so retrieve()'s
+        # `self._papers.get(pid)` miss drops them from results.
+        self._papers = {p["paper_id"]: p
+                        for p in db.iter_papers(self.conn, include_excluded=False)}
 
     def retrieve(self, query: str, k: int = 6, since: str | None = None,
                  paper_id: str | None = None,
@@ -86,7 +91,8 @@ class Retriever:
                 continue
             out.append(Passage(
                 paper_id=pid, doi=p.get("doi"), title=p.get("title"),
-                text=p.get("abstract"), journal_or_server=p.get("journal_or_server"),
+                text=p.get("abstract"), authors=p.get("authors") or [],
+                journal_or_server=p.get("journal_or_server"),
                 published_date=p.get("published_date"), is_oa=bool(p.get("is_oa")),
                 oa_fulltext_url=p.get("oa_fulltext_url"), is_full_text=False, score=score))
             if len(out) >= k:

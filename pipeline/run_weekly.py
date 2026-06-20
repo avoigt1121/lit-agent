@@ -112,7 +112,7 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
                 mode: str = "dry_run") -> tuple[Path, str]:
     """Render the digest (banner per `mode`) + cache analytics. Returns (path, html)."""
     conn = db.connect(db_path)
-    papers = list(db.iter_papers(conn))
+    papers = list(db.iter_papers(conn, include_excluded=False))  # skip quarantined rows
     profile = load_interest_profile(PROFILE_PATH)
     adata = analytics.compute_trends(conn)
     movers = analytics.keyword_movers(conn, profile)

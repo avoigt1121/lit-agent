@@ -75,7 +75,11 @@ class LitAgentUI:
             title = p.title or "(untitled)"
             title_md = f"[{title}]({link})" if link else title
             tag = " · OA" if p.is_oa else ""
-            lines.append(f"- {title_md} — `{p.doi or p.paper_id}` (sim {p.score:.2f}){tag}")
+            authors = getattr(p, "authors", None) or []
+            who = (authors[0] if len(authors) == 1 else f"{authors[0]} et al.") if authors else None
+            attribution = " · ".join(x for x in [who, p.published_date] if x)
+            attribution = f" — {attribution}" if attribution else ""
+            lines.append(f"- {title_md}{attribution} — `{p.doi or p.paper_id}` (sim {p.score:.2f}){tag}")
         return "\n".join(lines)
 
     def _respond(self, message: str, history: list, since_days):
@@ -117,6 +121,12 @@ class LitAgentUI:
         for delta in qa_answer.answer_stream(message, passages, self._client):
             accumulated += delta
             history[-1]["content"] = accumulated
+            yield history, "", sources
+        # Final pass: rewrite the model's bare-DOI brackets into linked
+        # author/date citations from real passage metadata (enforced, not prompted).
+        rendered = qa_answer.render_citations(accumulated, passages)
+        if rendered != accumulated:
+            history[-1]["content"] = rendered
             yield history, "", sources
 
     # ------------------------------------------------------------------

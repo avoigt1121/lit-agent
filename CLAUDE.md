@@ -182,3 +182,35 @@ Build v1 so this is a later config/UI change, not a rewrite:
 - **Persistence host** → HF Dataset repo (`CORPUS_HF_DATASET`); pipeline pushes, Space pulls read-only.
 - **Embedding model** → local BGE-small via `fastembed` (ONNX, no API key); `EMBEDDING_MODEL` overrides.
 - **Definition of "new"** → `first_seen_date`.
+
+### Decisions resolved (2026-06-20) — corpus de-pollution
+
+The Phase A census ingested whatever the saved EPMC query returned; that query was
+unrestricted-field (matched title, abstract, full text AND references), so it swept
+in off-topic papers and abstract-less meta records.
+
+- **Root cause = the query, not the census.** `census.py` has no relevance gate by
+  design; it faithfully ingests EPMC results. Fixed at the source.
+- **Query → title/abstract anchor (`config/sources.yaml`).** Kept the topical OR
+  vocabulary, ANDed a `(TITLE:pancrea* OR ABSTRACT:pancrea* OR TITLE:PDAC OR
+  ABSTRACT:PDAC)` anchor so PDAC must be the subject, not merely cited. Live 2025
+  hitCount 10,618 → 5,053 (−52%). (`MESH:` disjunct dropped — adds ~0 and breaks the
+  OR parse when mixed with wildcards.) `openalex.search` pinned to the bare terms
+  since EPMC field syntax isn't OpenAlex syntax. **Re-run `scripts/coverage_check.py`
+  to refresh the provenance block.**
+- **Retroactive cleanup = SOFT-FLAG, not delete.** Schema v5 adds `excluded` +
+  `excluded_reason` to `papers` (migration in `db.init_schema`). Rows + vectors stay
+  (reversible; no vectors.npz rebuild). `iter_papers(include_excluded=False)` drops
+  them from the digest + Q&A retriever; the retriever's `_papers.get(pid)` miss skips
+  their still-present vectors. Run via `scripts/cleanup_corpus.py`.
+- **Scope = abstract-less only (conservative, zero false positive).** 2,037 flagged
+  (1,979 abstract-less + 58 meta-title-with-abstract); corpus 46,570 → 44,533 active.
+  Off-topic-WITH-abstract papers are left to the tightened query + the Q&A floor
+  (`RETRIEVAL_MIN_SCORE`) — embedding similarity does NOT separate them cleanly from
+  legitimate mechanism reviews, so no embedding cull.
+- **Analytics is query-driven, not papers-driven.** `analytics.json`
+  (coverage/share-of-voice) comes from `coverage_counts` (EPMC hitCounts in
+  `backfill.py`), not the `papers` table — so flagging rows doesn't change it; the
+  tighter query does. Re-ran `backfill --force` (topic + keywords) to recompute the
+  series; share-of-voice ratios are ~stable (numerator and `_total` shrink together),
+  the absolute "All PDAC papers" headline drops with the noise.

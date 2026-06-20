@@ -26,7 +26,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Scalar columns stored as their own SQLite columns; everything else in the
 # normalized record is JSON-encoded into the matching column.
@@ -68,7 +68,9 @@ def init_schema(conn: sqlite3.Connection) -> None:
             annotations          TEXT,   -- JSON {genes, diseases}
             focus_areas          TEXT,   -- JSON list
             relevance_score      REAL,
-            embedding_id         TEXT
+            embedding_id         TEXT,
+            excluded             INTEGER NOT NULL DEFAULT 0,  -- 1 = quarantined (off-topic / abstract-less)
+            excluded_reason      TEXT     -- why it was excluded (e.g. 'abstract_less')
         );
         CREATE INDEX IF NOT EXISTS idx_papers_first_seen ON papers(first_seen_date);
         CREATE INDEX IF NOT EXISTS idx_papers_doi        ON papers(doi);
@@ -131,12 +133,29 @@ def init_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
         """
     )
+    _migrate_excluded_columns(conn)
     conn.execute(
         "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (str(SCHEMA_VERSION),),
     )
     conn.commit()
+
+
+def _migrate_excluded_columns(conn: sqlite3.Connection) -> None:
+    """Add the quarantine columns to a pre-v5 papers table (idempotent).
+
+    ``CREATE TABLE IF NOT EXISTS`` never alters an existing table, so a corpus
+    built before schema v5 (the 46.5k census) lacks ``excluded``/``excluded_reason``.
+    These are kept OUT of ``_SCALAR_COLS`` on purpose: ``upsert_papers`` must not
+    touch them, so a soft-flag survives a later re-ingest of the same paper.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(papers)")}
+    if "excluded" not in cols:
+        conn.execute("ALTER TABLE papers ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
+    if "excluded_reason" not in cols:
+        conn.execute("ALTER TABLE papers ADD COLUMN excluded_reason TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_papers_excluded ON papers(excluded)")
 
 
 def _row_from_record(rec: dict) -> dict:
@@ -248,13 +267,50 @@ def record_run(conn: sqlite3.Connection, run_date: str, window_from: str,
     conn.commit()
 
 
-def count_papers(conn: sqlite3.Connection) -> int:
-    return conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
+def count_papers(conn: sqlite3.Connection, include_excluded: bool = True) -> int:
+    where = "" if include_excluded else " WHERE excluded=0"
+    return conn.execute(f"SELECT COUNT(*) FROM papers{where}").fetchone()[0]
 
 
-def iter_papers(conn: sqlite3.Connection):
-    for row in conn.execute("SELECT * FROM papers"):
+def iter_papers(conn: sqlite3.Connection, include_excluded: bool = True):
+    """Yield papers as normalized records.
+
+    ``include_excluded=False`` skips quarantined rows (off-topic / abstract-less,
+    flagged by ``flag_excluded``) — used by the digest and the Q&A retriever so
+    those never surface, while the rows + their vectors stay in the store (the
+    soft-flag is reversible). The corpus-rebuild path keeps the default (True) so
+    re-embedding still covers every row.
+    """
+    where = "" if include_excluded else " WHERE excluded=0"
+    for row in conn.execute(f"SELECT * FROM papers{where}"):
         yield record_to_dict(row)
+
+
+def flag_excluded(conn: sqlite3.Connection, paper_ids, reason: str) -> int:
+    """Soft-quarantine the given paper_ids with a reason. Returns rows changed.
+
+    Only ever SETS excluded=1 (never clears it) so re-running the cleanup is
+    additive. To un-exclude, update the column directly. Vectors are untouched —
+    the retriever drops these because they no longer appear in iter_papers().
+    """
+    ids = list(paper_ids)
+    if not ids:
+        return 0
+    n = 0
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        q = (f"UPDATE papers SET excluded=1, excluded_reason=? "
+             f"WHERE paper_id IN ({','.join('?' * len(chunk))})")
+        n += conn.execute(q, [reason, *chunk]).rowcount
+    conn.commit()
+    return n
+
+
+def excluded_breakdown(conn: sqlite3.Connection) -> dict:
+    """{reason: count} over currently-excluded papers (audit / verification)."""
+    return {r[0]: r[1] for r in conn.execute(
+        "SELECT COALESCE(excluded_reason,'(none)'), COUNT(*) FROM papers "
+        "WHERE excluded=1 GROUP BY excluded_reason")}
 
 
 def papers_first_seen_between(conn: sqlite3.Connection, start: str, end: str) -> list[dict]:
