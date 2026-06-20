@@ -21,7 +21,7 @@ import time
 from datetime import date, timedelta
 from pathlib import Path
 
-from pipeline.harvest import _session, load_config
+from pipeline.harvest import _session, load_config, request_json
 from pipeline.score import load_interest_profile
 from store import db
 
@@ -46,9 +46,12 @@ def weekly_buckets(years: int, today: date | None = None) -> list[tuple[date, da
 
 
 def _hitcount(session, base_url: str, query: str) -> int:
-    r = session.get(base_url, params={"query": query, "format": "json", "pageSize": 1}, timeout=30)
-    r.raise_for_status()
-    return int(r.json().get("hitCount", 0))
+    # Route through the harvest retry helper: Europe PMC throws transient 503
+    # spells, and a multi-thousand-query backfill must ride them out (exponential
+    # backoff, honors Retry-After) rather than abort partway through.
+    data = request_json(session, base_url,
+                        {"query": query, "format": "json", "pageSize": 1})
+    return int(data.get("hitCount", 0))
 
 
 def _area_queries(profile: dict) -> list[tuple[str, str]]:
