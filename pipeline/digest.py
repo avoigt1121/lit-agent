@@ -126,6 +126,36 @@ def _item_html(rec: dict, note: str) -> str:
         f'{doi_html}</td></tr>')
 
 
+# ---------------------------------------------------------------------------
+# Provenance / coverage line (config-driven; CAPABILITIES.md §3.5)
+# ---------------------------------------------------------------------------
+
+def load_provenance(sources_path: str | Path = "config/sources.yaml") -> dict:
+    """The measured-coverage block written by scripts/coverage_check.py (or {})."""
+    try:
+        data = yaml.safe_load(Path(sources_path).read_text()) or {}
+    except Exception:  # noqa: BLE001 — missing/unreadable config => qualitative line
+        return {}
+    return data.get("provenance") or {}
+
+
+def provenance_sentence(prov: dict | None = None,
+                        sources_path: str | Path = "config/sources.yaml") -> str:
+    """One honest data-source line. Uses the self-measured recall when present,
+    else the qualitative version. NEVER hardcodes the ~98% figure (§3.5)."""
+    prov = load_provenance(sources_path) if prov is None else prov
+    rec = prov.get("measured_recall")
+    if rec:
+        asof = prov.get("as_of", "")
+        return (f"Coverage: our saved PDAC query recovers ~{round(rec * 100)}% of papers found by an "
+                f"OpenAlex cross-check (self-measured {asof}; a conservative lower bound). Europe PMC "
+                "is the primary source — it mirrors PubMed/MEDLINE plus bioRxiv/medRxiv preprints. "
+                "Open-access full text where available; abstracts otherwise.")
+    return ("Sources: Europe PMC (primary; mirrors PubMed/MEDLINE + bioRxiv/medRxiv preprints), with "
+            "PubMed and bioRxiv/medRxiv as secondary feeds. Open-access full text where available; "
+            "abstracts otherwise.")
+
+
 def build_digest_html(papers: list[dict], profile: dict, window: dict,
                       client=None, analytics_html: str | None = None,
                       mode: str = "dry_run") -> str:
@@ -169,6 +199,9 @@ def build_digest_html(papers: list[dict], profile: dict, window: dict,
         f'<div style="font-size:13px;color:#6b7280;">New open-access PDAC literature · {win} · '
         f'{n_classified} of {len(papers)} papers matched a focus area</div>',
     ]
+    parts.append(
+        '<div style="font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #eee;'
+        'border-radius:6px;padding:7px 10px;margin:10px 0;">' + _esc(provenance_sentence()) + '</div>')
     if banner:
         parts.append(banner)
     if analytics_html:

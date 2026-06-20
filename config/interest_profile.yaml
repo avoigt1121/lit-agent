@@ -105,9 +105,8 @@ focus_areas:
     keywords: [early detection, biomarker, liquid biopsy, cfDNA, ctDNA, CA19-9,
                exosome, circulating tumor cell, CTC, screening, surveillance,
                high-risk, IPMN, PanIN, cyst]
-    count_query: '("early detection" OR biomarker OR "liquid biopsy" OR cfDNA OR
-                   ctDNA OR "CA19-9" OR exosome OR "circulating tumor cell" OR
-                   screening OR IPMN OR PanIN)'
+    count_query: '("early detection" OR "liquid biopsy" OR cfDNA OR ctDNA OR
+                   "CA19-9" OR "circulating tumor cell" OR IPMN OR PanIN)'
     exemplar_dois: []
     audience_note: >
       Detection/surveillance and biomarkers — liquid biopsy (cfDNA/ctDNA/CTC/

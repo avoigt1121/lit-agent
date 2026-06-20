@@ -18,6 +18,7 @@ from pathlib import Path
 import gradio as gr
 from dotenv import load_dotenv
 
+from pipeline.digest import provenance_sentence
 from qa import answer as qa_answer
 from qa.retrieve import Retriever
 
@@ -131,6 +132,7 @@ class LitAgentUI:
                 "strictly from retrieved abstracts. When a question needs detail that isn't in the "
                 "abstract, the agent says the full text isn't available rather than infer it."
             )
+            gr.Markdown(f"<small>{provenance_sentence()}</small>")
             chatbot = gr.Chatbot(label="Conversation", height=480, type="messages", show_label=False)
             with gr.Accordion("Sources (what grounded the answer)", open=False):
                 sources_panel = gr.Markdown("_Ask a question to see the cited passages._")
