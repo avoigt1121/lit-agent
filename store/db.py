@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Scalar columns stored as their own SQLite columns; everything else in the
 # normalized record is JSON-encoded into the matching column.
@@ -117,6 +118,16 @@ def init_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_kw ON keyword_counts(focus_area, keyword, period_start);
 
+        CREATE TABLE IF NOT EXISTS census_progress (
+            period_start TEXT NOT NULL,   -- ISO date, window start (month-aligned)
+            period_end   TEXT NOT NULL,   -- ISO date, window end (inclusive)
+            source       TEXT NOT NULL,   -- 'europepmc' (census is EPMC-only, §1.4)
+            n_harvested  INTEGER,         -- raw records returned by EPMC for the window
+            n_records    INTEGER,         -- unique records persisted after dedup
+            ingested_at  TEXT,            -- ISO timestamp the window was completed
+            PRIMARY KEY (period_start, source)
+        );
+
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
         """
     )
@@ -191,6 +202,31 @@ def upsert_papers(conn: sqlite3.Connection, records: list[dict]) -> list[str]:
             new_ids.append(rec["paper_id"])
     conn.commit()
     return new_ids
+
+
+def backdate_first_seen(conn: sqlite3.Connection, records: list[dict]) -> int:
+    """Move first_seen_date EARLIER to each record's value when the stored date is later.
+
+    upsert_papers() deliberately PRESERVES first_seen_date on conflict, so a paper
+    already ingested by the weekly path (first_seen = its today() stamp) keeps that
+    later date even when the census re-harvests it with a historically-correct date
+    (its publication date). For the census the earlier date is the right one — it is
+    the literature-appearance date novelty (Phase E) is measured against. The
+    `first_seen_date > ?` guard enforces the earliest-sighting invariant: this only
+    ever moves a date backward, never forward. Returns the number of rows changed.
+    """
+    n = 0
+    for rec in records:
+        fsd = rec.get("first_seen_date")
+        if not fsd:
+            continue
+        cur = conn.execute(
+            "UPDATE papers SET first_seen_date=? WHERE paper_id=? AND first_seen_date>?",
+            (fsd, rec["paper_id"], fsd),
+        )
+        n += cur.rowcount
+    conn.commit()
+    return n
 
 
 def set_topic_tags(conn: sqlite3.Connection, paper_id: str, tags: dict[str, float]) -> None:
@@ -290,3 +326,35 @@ def get_keyword_counts(conn: sqlite3.Connection, granularity: str = "quarter") -
         "FROM keyword_counts WHERE granularity=? ORDER BY period_start", (granularity,))
     return [{"focus_area": r[0], "keyword": r[1], "period_start": r[2],
              "period_end": r[3], "complete": r[4], "count": r[5]} for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Census progress (resumable record backfill; see pipeline/census.py)
+# ---------------------------------------------------------------------------
+
+def census_periods_present(conn: sqlite3.Connection, source: str = "europepmc") -> set[str]:
+    """period_start values already fully ingested (for a resumable census).
+
+    Only COMPLETE windows are recorded here; the current (partial) month is
+    reprocessed every run so it stays fresh, mirroring backfill's `complete` flag.
+    """
+    rows = conn.execute(
+        "SELECT period_start FROM census_progress WHERE source=?", (source,))
+    return {r[0] for r in rows}
+
+
+def mark_census_period(conn: sqlite3.Connection, period_start: str, period_end: str,
+                       source: str = "europepmc", n_harvested: int = 0,
+                       n_records: int = 0) -> None:
+    """Record a census window as completed (idempotent). Re-marking updates counts."""
+    conn.execute(
+        "INSERT INTO census_progress"
+        "(period_start, period_end, source, n_harvested, n_records, ingested_at) "
+        "VALUES(?,?,?,?,?,?) "
+        "ON CONFLICT(period_start, source) DO UPDATE SET "
+        "period_end=excluded.period_end, n_harvested=excluded.n_harvested, "
+        "n_records=excluded.n_records, ingested_at=excluded.ingested_at",
+        (period_start, period_end, source, n_harvested, n_records,
+         datetime.now().isoformat(timespec="seconds")),
+    )
+    conn.commit()

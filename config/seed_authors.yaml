@@ -1,0 +1,62 @@
+# config/seed_authors.yaml — BCC member/PI roster used to bootstrap the seed set:
+#   - per-area `exemplar_dois` for classifier anchoring (Phase D)
+#   - the "N new papers cite your work" citation seed (Phase D)
+#   - Phase B's gold-set recall test (does our PDAC query retrieve their papers?)
+#
+# Spans the WHOLE Center, not just Sears & Brody. Config, not code: add/remove
+# members here without touching the pipeline. This file holds IDENTITIES only —
+# the author->DOI bootstrap resolves each ORCID's papers via OpenAlex/EuropePMC,
+# and a human curates the result into config/interest_profile.yaml exemplar_dois.
+#
+# Validated against the ORCID public API on 2026-06-18 (name match + affiliation
+# + sample works). `verified: false` = needs a human check before use.
+
+seed_authors:
+  - name: Rosalie Sears
+    orcid: "0000-0003-1558-2413"      # OHSU (current); MYC signature
+    verified: true
+  - name: Jonathan Brody
+    orcid: "0000-0003-3680-3270"      # OHSU (current); HuR/ELAVL1 signature
+    verified: true
+  - name: Dove Keith
+    orcid: "0000-0001-6104-3264"
+    verified: true
+  - name: Gordon Mills
+    orcid: "0000-0002-0144-9614"      # OHSU (current)
+    verified: true
+  - name: Katelyn Byrne
+    orcid: "0000-0002-2459-9041"      # OHSU (current)
+    verified: true
+  - name: Lisa Coussens
+    orcid: "0000-0003-2389-1865"      # OHSU; tumor immunology / TME
+    verified: true
+  - name: Charles Lopez
+    orcid: "0000-0002-0921-4932"      # OHSU (Charles D. Lopez); confirmed via works (PDAC; co-authors Sears MYC-S62)
+    verified: true
+  - name: Adel Kardosh
+    orcid: "0000-0002-6241-4896"
+    verified: true
+  - name: Aaron Grossberg
+    orcid: "0000-0003-4690-4948"      # OHSU (current); cachexia / radiation oncology
+    verified: true
+  - name: Teresa Zimmers
+    orcid: "0000-0001-7872-0540"      # OHSU + Portland VA (current); cachexia. (User wrote "Theresa"; ORCID = "Teresa".)
+    verified: true
+  - name: Gregory Cote
+    orcid: "0000-0002-3565-9302"      # OHSU (current)
+    verified: true
+  - name: Kaveh Sharzehi
+    orcid: "0000-0002-2123-7854"      # OHSU GI; confirmed via works (pancreas/GI)
+    verified: true
+  - name: Carmen Curry
+    orcid: "0009-0002-8345-5213"
+    verified: false                   # valid iD + name match, but 0 public works & no public employment — cannot confirm BCC identity; yields no seed DOIs as-is. Double-check.
+  - name: Shannon McWeeney
+    orcid: "0000-0001-8333-6607"      # OHSU (current); biostatistics / bioinformatics
+    verified: true
+  - name: Carl Pelz
+    orcid: "0000-0002-2235-880X"      # Sears lab
+    verified: true
+  - name: Sadik Esener
+    orcid: "0000-0002-6873-0478"      # OHSU (current); nanosensor early detection
+    verified: true
