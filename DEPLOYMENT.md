@@ -74,11 +74,15 @@ runner + scheduler change only — same `python -m pipeline.run_weekly -v`, same
 `pip install -r requirements.txt`, and runs the module — mirroring the Actions steps.
 
 **Prereqs:** install the CLI (`curl -LsSf https://hf.co/cli/install.sh | bash`) and
-`hf auth login`. Fill a gitignored `.env` (from `.env.example`) with the same vars as
-§1 — `ANTHROPIC_API_KEY`, `NCBI_API_KEY`, `CORPUS_HF_DATASET`, `RESEND_API_KEY`,
-`EMAIL_PROVIDER`, `EMAIL_SENDER`, `SEND_LIVE`. **`HF_TOKEN` is the exception** — it is
-forwarded automatically from your `hf auth login` (`--secrets HF_TOKEN`), so leave it
-out of the file. Secrets are masked by HF; `SEND_LIVE` stays the live-send gate.
+`hf auth login`. Two credentials are resolved + forwarded **automatically** by
+`hf_job.sh`, so they need not live in any file: **`HF_TOKEN`** (from your login) and
+**`ANTHROPIC_API_KEY`** (from your shell env, else the macOS keychain — set once with
+`security add-generic-password -s ANTHROPIC_API_KEY -a "$USER" -w 'sk-ant-...'`; or skip
+it entirely by running with `LLM_PROVIDER=hf`, which authenticates the cheap steps with
+`HF_TOKEN`). Put the rest in an **optional** gitignored `.env` (from `.env.example`):
+`CORPUS_HF_DATASET` (required for corpus sync), `EMAIL_PROVIDER`, `EMAIL_SENDER`,
+`RESEND_API_KEY`, `NCBI_API_KEY`, `SEND_LIVE`. Secrets are masked by HF; `SEND_LIVE`
+stays the live-send gate. A Job is a fresh container — it can't read Space secrets.
 
 **Cutover (run in this order — do NOT flip the Actions schedule until HF is proven):**
 

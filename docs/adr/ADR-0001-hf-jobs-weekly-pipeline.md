@@ -117,10 +117,12 @@ to the corpus schema, or to the Space. Runner + scheduler only.
    entrypoint is a package module (`python -m pipeline.run_weekly`) that needs the whole
    repo + `config/*.yaml`, and the repo has no pyproject/packaging — so clone-in-image is
    the faithful 1:1 mirror of the Actions checkout→install→run steps.
-2. [ ] **(operator)** Provide the same secrets/vars to the Job: fill a gitignored `.env`
-   (from `.env.example`) with `ANTHROPIC_API_KEY`, `NCBI_API_KEY`, `CORPUS_HF_DATASET`,
-   `EMAIL_PROVIDER`, `EMAIL_SENDER`, `RESEND_API_KEY`, `SEND_LIVE`. `HF_TOKEN` is
-   forwarded automatically from `hf auth login` (`--secrets HF_TOKEN`) — not in the file.
+2. [ ] **(operator)** Provide secrets to the Job. `HF_TOKEN` (from `hf auth login`) and
+   `ANTHROPIC_API_KEY` (from shell env, else the macOS keychain) are resolved + forwarded
+   automatically by `hf_job.sh` — set the key once via `security add-generic-password -s
+   ANTHROPIC_API_KEY -a "$USER" -w 'sk-ant-...'`, or skip it with `LLM_PROVIDER=hf`. The
+   rest goes in an optional gitignored `.env`: `CORPUS_HF_DATASET` (required), `EMAIL_*`,
+   `RESEND_API_KEY`, `NCBI_API_KEY`, `SEND_LIVE`.
 3. [ ] **(operator)** Register the schedule: `scripts/hf_job.sh schedule` (cron
    `"0 13 * * 1"`, UTC — same as `weekly.yml`); confirm with `scripts/hf_job.sh ps`.
 4. [ ] **Deferred to cutover (sequencing):** set `weekly.yml` to `workflow_dispatch`-only
