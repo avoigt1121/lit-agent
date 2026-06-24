@@ -217,15 +217,19 @@ in off-topic papers and abstract-less meta records.
 
 ### Decisions resolved (2026-06-24) — ADRs (introduces `docs/adr/`)
 
-This repo now keeps Architecture Decision Records in `docs/adr/`. Two are **Accepted**
-(decision made; action items **not yet executed** — implementation pending). Both are
-unlocked by HF PRO (2026-06) and are coupled (0002 runs inside 0001's Job).
+This repo now keeps Architecture Decision Records in `docs/adr/`. Two are **Accepted**;
+**ADR-0001 implementation is in progress**, ADR-0002 not yet started. Both are unlocked
+by HF PRO (2026-06) and are coupled (0002 runs inside 0001's Job). Per-action-item status
+lives in each ADR file, not here.
 
 - **ADR-0001 — weekly offline pipeline → HF Jobs.** Move `pipeline.run_weekly` off the
   GitHub Actions cron onto **HF Jobs** (same `0 13 * * 1` cron, same entrypoint, CPU
   first / GPU only on demonstrated need). Runner+scheduler change only — no change to
   harvest/normalize/score/digest, `config/*.yaml`, corpus schema, or the Space.
   `.github/workflows/weekly.yml` stays as documented fallback (dual-run during cutover).
+  **Status:** runner authored in `scripts/hf_job.sh` (clone-in-`python:3.11` Job; AI#1/#7
+  done, see `DEPLOYMENT.md` §1b). Remaining = operator setup (`.env` secrets → `hf_job.sh
+  schedule` → verify a run) + removing `weekly.yml`'s `schedule:` block at cutover.
 - **ADR-0002 — cheap classifier + relevance note → HF Inference Providers.** Add a
   config-overridable `LLM_PROVIDER` / `CLASSIFIER_MODEL` (mirroring `EMBEDDING_MODEL`)
   for the two cheap offline scoring steps, **eval-gated** on `relevance_set.json`;
