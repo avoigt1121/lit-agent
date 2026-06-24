@@ -227,8 +227,9 @@ coupled (0002 runs inside 0001's Job). Per-action-item status lives in each ADR 
   harvest/normalize/score/digest, `config/*.yaml`, corpus schema, or the Space.
   `.github/workflows/weekly.yml` stays as documented fallback (dual-run during cutover).
   **Status:** runner authored in `scripts/hf_job.sh` (clone-in-`python:3.11` Job; AI#1/#7
-  done, see `DEPLOYMENT.md` §1b). Remaining = operator setup (`.env` secrets → `hf_job.sh
-  schedule` → verify a run) + removing `weekly.yml`'s `schedule:` block at cutover.
+  done, see `DEPLOYMENT.md` §1b). Remaining = operator setup (`ANTHROPIC_API_KEY` via
+  keychain/env + optional `.env` for `CORPUS_HF_DATASET` etc.) → `hf_job.sh run` (verify)
+  → `schedule` → remove `weekly.yml`'s `schedule:` block at cutover.
 - **ADR-0002 — cheap classifier + relevance note → HF Inference Providers.** Add a
   config-overridable `LLM_PROVIDER` / `CLASSIFIER_MODEL` (mirroring `EMBEDDING_MODEL`)
   for the two cheap offline scoring steps, **eval-gated** on `relevance_set.json`;
