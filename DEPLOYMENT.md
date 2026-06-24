@@ -62,6 +62,42 @@ inbound-only, Resend is outbound. Recommended:
 Access ≠ redistribution: link out + short fair-use snippets; never embed licensed
 full text in the email.
 
+## 1b. Offline pipeline on HF Jobs (ADR-0001 — target runner)
+
+[ADR-0001](docs/adr/ADR-0001-hf-jobs-weekly-pipeline.md) moves this same cron off
+GitHub Actions onto **HF Jobs**, so the pipeline runs on HF infrastructure next to
+the corpus Dataset (same-platform pull/push, a GPU flavor a flag away). It is a
+runner + scheduler change only — same `python -m pipeline.run_weekly -v`, same
+`config/*.yaml`, same env vars. `weekly.yml` stays in the repo as fallback.
+
+`scripts/hf_job.sh` drives it. The Job clones this (public) repo into `python:3.11`,
+`pip install -r requirements.txt`, and runs the module — mirroring the Actions steps.
+
+**Prereqs:** install the CLI (`curl -LsSf https://hf.co/cli/install.sh | bash`) and
+`hf auth login`. Fill a gitignored `.env` (from `.env.example`) with the same vars as
+§1 — `ANTHROPIC_API_KEY`, `NCBI_API_KEY`, `CORPUS_HF_DATASET`, `RESEND_API_KEY`,
+`EMAIL_PROVIDER`, `EMAIL_SENDER`, `SEND_LIVE`. **`HF_TOKEN` is the exception** — it is
+forwarded automatically from your `hf auth login` (`--secrets HF_TOKEN`), so leave it
+out of the file. Secrets are masked by HF; `SEND_LIVE` stays the live-send gate.
+
+**Cutover (run in this order — do NOT flip the Actions schedule until HF is proven):**
+
+1. **Verify one full run** end-to-end on HF (dry-run, `SEND_LIVE=0`):
+   `scripts/hf_job.sh run` — streams logs; exits non-zero on failure. Confirms
+   corpus pull → harvest → embed → persist → digest (dry-run) → push.
+2. **Register the weekly schedule:** `scripts/hf_job.sh schedule` (cron `0 13 * * 1`,
+   UTC — same cadence as `weekly.yml`). Check it with `scripts/hf_job.sh ps`.
+3. **Only after a clean scheduled run, retire the duplicate cron:** edit
+   `.github/workflows/weekly.yml` to keep `workflow_dispatch` but **remove the
+   `schedule:` block** (leaving it as a manual fallback). Doing this earlier would
+   leave a window with no scheduled run; doing it never means both crons fire and the
+   digest goes out twice.
+
+**Hardware / cost:** defaults to `cpu-basic` (parity with Actions) and a 30-minute
+timeout. Promote the embedding step with `FLAVOR=cpu-upgrade scripts/hf_job.sh …` (or
+a GPU flavor) only once wall-clock justifies it — a flag, not a code change. HF Jobs
+is pay-as-you-go per second, so watch Jobs billing; a weekly ~30-min CPU job is small.
+
 ## 2. Online Space (Hugging Face) — Phase 5
 
 `app.py` builds `ui.py` and launches on port 7860 (Python 3.10+ — gradio 5; HF

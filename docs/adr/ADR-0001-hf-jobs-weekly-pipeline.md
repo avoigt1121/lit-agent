@@ -110,13 +110,29 @@ to the corpus schema, or to the Space. Runner + scheduler only.
 
 ## Action Items
 
-1. [ ] Author the HF Jobs invocation (UV script or `hf jobs uv run` with `requirements.txt`) for `python -m pipeline.run_weekly -v`.
-2. [ ] Recreate secrets/vars as HF Jobs secrets: `ANTHROPIC_API_KEY`, `NCBI_API_KEY`, `CORPUS_HF_DATASET`, `HF_TOKEN`, `EMAIL_PROVIDER`, `EMAIL_SENDER`, `RESEND_API_KEY`, `SEND_LIVE`.
-3. [ ] Register the HF Jobs schedule `"0 13 * * 1"`; verify timezone (UTC) matches the current Actions cron.
-4. [ ] Dual-run: set `weekly.yml` to `workflow_dispatch`-only; keep it as fallback.
-5. [ ] Verify one full HF Jobs run end-to-end (corpus pull → harvest → embed → persist → digest dry-run → push) before disabling the GitHub schedule.
-6. [ ] Benchmark the embedding step; decide CPU vs small-GPU flavor.
-7. [ ] Update `DEPLOYMENT.md` / `CLAUDE.md` "offline pipeline" notes to name HF Jobs as the runner.
+1. [x] Author the HF Jobs invocation — `scripts/hf_job.sh` (`run` | `schedule` | `ps` |
+   `unschedule`). **Implementation note:** uses `hf jobs run` with a stock `python:3.11`
+   image that *clones this public repo + `pip install -r requirements.txt` + runs the
+   module*, rather than `hf jobs uv run`. `uv run` executes a single script; our
+   entrypoint is a package module (`python -m pipeline.run_weekly`) that needs the whole
+   repo + `config/*.yaml`, and the repo has no pyproject/packaging — so clone-in-image is
+   the faithful 1:1 mirror of the Actions checkout→install→run steps.
+2. [ ] **(operator)** Provide the same secrets/vars to the Job: fill a gitignored `.env`
+   (from `.env.example`) with `ANTHROPIC_API_KEY`, `NCBI_API_KEY`, `CORPUS_HF_DATASET`,
+   `EMAIL_PROVIDER`, `EMAIL_SENDER`, `RESEND_API_KEY`, `SEND_LIVE`. `HF_TOKEN` is
+   forwarded automatically from `hf auth login` (`--secrets HF_TOKEN`) — not in the file.
+3. [ ] **(operator)** Register the schedule: `scripts/hf_job.sh schedule` (cron
+   `"0 13 * * 1"`, UTC — same as `weekly.yml`); confirm with `scripts/hf_job.sh ps`.
+4. [ ] **Deferred to cutover (sequencing):** set `weekly.yml` to `workflow_dispatch`-only
+   (remove the `schedule:` block) **only after** a clean scheduled HF run — flipping it
+   now would leave a window with no scheduled run; never flipping means both crons fire
+   and the digest double-sends. Command authored; intentionally not yet applied.
+5. [ ] **(operator)** Verify one full HF Jobs run end-to-end (`scripts/hf_job.sh run`,
+   `SEND_LIVE=0` dry-run): corpus pull → harvest → embed → persist → digest dry-run → push.
+6. [ ] **(operator)** Benchmark the embedding step from the run #5 logs; decide CPU vs
+   `cpu-upgrade`/small-GPU flavor (`FLAVOR=` override — no code change).
+7. [x] Document HF Jobs as the runner — `DEPLOYMENT.md` §1b (cutover sequence) and the
+   `CLAUDE.md` "Decisions resolved (2026-06-24) — ADRs" note name HF Jobs.
 
 ## References
 
