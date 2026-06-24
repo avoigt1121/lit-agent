@@ -126,12 +126,12 @@ case "${1:-}" in
   run)
     require_cli; preflight_secrets; build_args
     echo "-> one-off HF Job:  image=$IMAGE  flavor=$FLAVOR  timeout=$TIMEOUT  ref=$REF" >&2
-    exec hf jobs run "${ARGS[@]}" "$IMAGE" bash -c "$BOOTSTRAP"
+    exec hf jobs run "${ARGS[@]}" -- "$IMAGE" bash -c "$BOOTSTRAP"
     ;;
   schedule)
     require_cli; preflight_secrets; build_args
     echo "-> scheduling weekly HF Job:  cron='$CRON'  flavor=$FLAVOR  ref=$REF" >&2
-    exec hf jobs scheduled run "$CRON" "${ARGS[@]}" "$IMAGE" bash -c "$BOOTSTRAP"
+    exec hf jobs scheduled run "$CRON" "${ARGS[@]}" -- "$IMAGE" bash -c "$BOOTSTRAP"
     ;;
   ps)
     require_cli
