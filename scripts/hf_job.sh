@@ -34,6 +34,7 @@
 #   FLAVOR=cpu-basic  TIMEOUT=30m  IMAGE=python:3.11  REF=main  SECRETS_FILE=.env
 #   REPO_URL=https://github.com/avoigt1121/lit-agent  CRON="0 13 * * 1"  NAMESPACE=
 #   LLM_PROVIDER=hf  CLASSIFY_MODEL=…  NOTE_MODEL=…  (forwarded to the Job when set)
+#   RUN_ARGS="--no-sync --no-send"   (extra flags appended to run_weekly, e.g. a smoke test)
 set -uo pipefail
 
 FLAVOR="${FLAVOR:-cpu-basic}"            # ADR-0001: start at CPU parity; GPU is a flag away (e.g. FLAVOR=cpu-upgrade / a10g-small)
@@ -49,7 +50,7 @@ CRON="${CRON:-0 13 * * 1}"               # Mondays 13:00 UTC — same cadence as
 BOOTSTRAP="git clone --depth 1 --branch ${REF} ${REPO_URL} /tmp/lit-agent \
 && cd /tmp/lit-agent \
 && pip install --no-cache-dir -q -r requirements.txt \
-&& python -m pipeline.run_weekly -v"
+&& python -m pipeline.run_weekly -v ${RUN_ARGS:-}"
 
 require_cli() {
   command -v hf >/dev/null 2>&1 || {
