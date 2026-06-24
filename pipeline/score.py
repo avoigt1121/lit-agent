@@ -8,9 +8,11 @@ queries get the BGE retrieval instruction (embed_query) — the asymmetric setup
 BGE expects. The same model must embed the corpus (offline) and queries (in the
 Space), so changing it means re-embedding the corpus.
 
-Phase 2 (TODO): classify each paper into BCC focus areas (embedding similarity to
-interest_profile.yaml descriptors + a cheap-LLM confirm) and compute
-relevance_score — graded against eval/relevance_set.json (§9.3 precision).
+Phase 2 (implemented below — classify_and_score / confirm_with_llm): classify each
+paper into BCC focus areas (embedding similarity to interest_profile.yaml descriptors
++ a cheap-LLM confirm; the cheap-LLM provider is switchable via pipeline/llm.py —
+ADR-0002) and compute relevance_score — graded against eval/relevance_set.json
+(§9.3 precision).
 """
 from __future__ import annotations
 
