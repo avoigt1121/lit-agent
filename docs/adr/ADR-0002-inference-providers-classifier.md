@@ -124,9 +124,11 @@ corpus schema, or what counts as "new" (`first_seen_date`).
 3. [x] Documented in `.env.example` (`LLM_PROVIDER` / `CLASSIFY_MODEL` / `NOTE_MODEL` /
    `HF_INFERENCE_PROVIDER`); `ANTHROPIC_API_KEY` stays the default + one-switch fallback.
    `requirements.txt` `huggingface_hub` floor bumped to `>=0.30` (Inference Providers API).
-4. [ ] **(operator/eval)** Run `eval/run_eval.py` against `relevance_set.json` for candidate
-   HF models (`LLM_PROVIDER=hf CLASSIFY_MODEL=… NOTE_MODEL=…`); record per-area precision vs
-   the Anthropic baseline. Needs HF inference credits.
+4. [ ] **(operator/eval)** Run `eval/run_eval.py relevance` against `relevance_set.json` for
+   candidate HF models (`LLM_PROVIDER=hf CLASSIFY_MODEL=… NOTE_MODEL=…`); record per-area
+   precision vs the Anthropic baseline. Needs HF inference credits. **Enabled:** `run_relevance`
+   now builds its classify client via `cheap_client()`, so `LLM_PROVIDER=hf` actually exercises
+   the candidate (the QA eval stays on Anthropic via `_client()` — out of scope).
 5. [ ] **(gated on #4)** Flip the default to `hf` only if within tolerance; else keep
    anthropic and document the gap.
 6. [ ] **(deferred — monitoring)** Credit-usage check in the weekly Job (warn before

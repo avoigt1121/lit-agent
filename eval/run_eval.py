@@ -161,7 +161,8 @@ def report_qa(graded: list[dict]) -> str:
 
 def run_relevance(items: list[dict]) -> list[dict]:
     from pipeline.score import Embedder, classify_and_score, embed_corpus, load_interest_profile
-    embedder, client = Embedder(), _client()
+    from pipeline.llm import cheap_client  # provider switch (ADR-0002): eval the SAME client the
+    embedder, client = Embedder(), cheap_client()  # pipeline classifies with, so LLM_PROVIDER=hf is graded for real
     profile = load_interest_profile(ROOT / "config" / "interest_profile.yaml")
     graded = []
     for i, it in enumerate(items, 1):
