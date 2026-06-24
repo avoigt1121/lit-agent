@@ -217,10 +217,9 @@ in off-topic papers and abstract-less meta records.
 
 ### Decisions resolved (2026-06-24) — ADRs (introduces `docs/adr/`)
 
-This repo now keeps Architecture Decision Records in `docs/adr/`. Two are **Accepted**;
-**ADR-0001 implementation is in progress**, ADR-0002 not yet started. Both are unlocked
-by HF PRO (2026-06) and are coupled (0002 runs inside 0001's Job). Per-action-item status
-lives in each ADR file, not here.
+This repo now keeps Architecture Decision Records in `docs/adr/`. Two are **Accepted**, and
+**both implementations are in progress**. Both are unlocked by HF PRO (2026-06) and are
+coupled (0002 runs inside 0001's Job). Per-action-item status lives in each ADR file, not here.
 
 - **ADR-0001 — weekly offline pipeline → HF Jobs.** Move `pipeline.run_weekly` off the
   GitHub Actions cron onto **HF Jobs** (same `0 13 * * 1` cron, same entrypoint, CPU
@@ -235,3 +234,8 @@ lives in each ADR file, not here.
   for the two cheap offline scoring steps, **eval-gated** on `relevance_set.json`;
   `ANTHROPIC_API_KEY` kept as one-switch fallback. The Q&A answer model (`qa/answer.py`)
   is **explicitly out of scope** — groundedness gets its own eval-gated ADR.
+  **Status:** provider switch landed in `pipeline/llm.py` (`LLM_PROVIDER`, default
+  `anthropic` = unchanged; `hf` routes classify + relevance/intro through HF Inference
+  Providers via an Anthropic-shaped shim), wired at `run_weekly._maybe_client`. Remaining =
+  eval candidate HF models on `relevance_set.json`, then flip the default only if precision
+  holds. The cheap calls live in `score.py` + `digest.py` (not just `score.py`).

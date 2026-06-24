@@ -12,7 +12,7 @@ PyYAML>=6.0
 numpy>=1.23
 rapidfuzz>=3.0          # fuzzy-title dedup
 fastembed>=0.3          # LOCAL embeddings (BGE-small, ONNX — no API key/torch)
-huggingface_hub>=0.23   # push/pull the corpus to the durable HF Dataset repo
+huggingface_hub>=0.30   # corpus push/pull + HF Inference Providers for the cheap LLM steps (ADR-0002)
 
 # --- Phase 2: interest model + digest ---
 anthropic>=0.40         # LLM classify-confirm + relevance notes (optional; needs ANTHROPIC_API_KEY)

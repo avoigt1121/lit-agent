@@ -48,15 +48,15 @@ RECIPIENTS_PATH = ROOT / "config" / "recipients.yaml"
 
 
 def _maybe_client():
-    """Anthropic client if a key is set, else None (embedding-only fallback)."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return None
-    try:
-        import anthropic
-        return anthropic.Anthropic()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Anthropic unavailable (%s) — embedding-only classification.", exc)
-        return None
+    """Client for the cheap offline LLM steps (classify / relevance / intro).
+
+    Provider-switched by LLM_PROVIDER (default ``anthropic`` — unchanged behavior;
+    ``hf`` routes to HF Inference Providers). None => key-free embedding-only
+    fallback. See pipeline/llm.py (ADR-0002). The Q&A answer model is separate
+    (qa/answer.py) and intentionally not affected.
+    """
+    from pipeline.llm import cheap_client
+    return cheap_client()
 
 
 def _send_mode(args) -> str:

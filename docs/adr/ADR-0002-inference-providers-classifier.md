@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-06-24)
 **Date:** 2026-06-24
 **Deciders:** Annie Voigt (project lead)
-**Scope:** `lit-agent` offline scoring only — the multi-label focus-area **classifier** and the one-sentence **relevance note** (`pipeline/score.py`). Enabled by HF PRO (2026-06). The Q&A grounded-answer model (`qa/answer.py`) is **explicitly out of scope** here.
+**Scope:** `lit-agent` offline scoring only — the multi-label focus-area **classifier** (`confirm_with_llm` in `pipeline/score.py`) and the one-sentence **relevance note** + per-area **topic intro** (`relevance_note` / `topic_intro` in `pipeline/digest.py`), all fed one client built in `pipeline/run_weekly.py`. Enabled by HF PRO (2026-06). The Q&A grounded-answer model (`qa/answer.py`) is **explicitly out of scope** here.
 
 ---
 
@@ -105,13 +105,35 @@ corpus schema, or what counts as "new" (`first_seen_date`).
 
 ## Action Items
 
-1. [ ] Add `LLM_PROVIDER` / `CLASSIFIER_MODEL` config (env-overridable) wired into `pipeline/score.py`; default = current behavior.
-2. [ ] Implement the HF Inference Providers call path with JSON/grammar-constrained output + validation/retry.
-3. [ ] Document both providers in `.env.example`; keep `ANTHROPIC_API_KEY` as fallback.
-4. [ ] Run `eval/run_eval.py` against `relevance_set.json` for candidate open models; record per-area precision vs the Anthropic baseline.
-5. [ ] Flip the default only if within tolerance; otherwise keep Anthropic and document the gap.
-6. [ ] Add a credit-usage check to the weekly Job (warn before pay-as-you-go spill on backfills).
-7. [ ] Note in `CLAUDE.md` that the Q&A answer model is intentionally excluded pending a groundedness-eval ADR.
+1. [x] Provider switch added (env-overridable; default = current behavior) — new module
+   `pipeline/llm.py` (`cheap_client()`), wired via `run_weekly._maybe_client`.
+   **Correction to the original locator:** the cheap calls are NOT all in `score.py` —
+   they are `confirm_with_llm` (score.py) plus `relevance_note` + `topic_intro`
+   (digest.py), all fed ONE client built in `run_weekly.py`. Switching at that single
+   factory routes all three and leaves the `client.messages.create(...)` call sites
+   untouched. Model knobs `CLASSIFY_MODEL` / `NOTE_MODEL` already existed (= the ADR's
+   `CLASSIFIER_MODEL`); the genuinely new knobs are `LLM_PROVIDER` + `HF_INFERENCE_PROVIDER`.
+2. [x] HF path via `huggingface_hub.InferenceClient.chat_completion`, wrapped in an
+   Anthropic-shaped shim (`.messages.create → .content[0].text`) with retry (`_HF_RETRIES`).
+   **JSON note:** enforced as the Anthropic path already does — "JSON only" prompt + the
+   caller's parse-or-empty validation in `confirm_with_llm` — NOT a server-side grammar
+   (the shim is shared with the prose notes, so it cannot force a global JSON mode).
+   Persistent failure RAISES so each call site applies its documented fallback (classify →
+   {}, notes → abstract sentence; never fabricate). Mocked-client tests cover the contract,
+   retry, and raise-on-failure.
+3. [x] Documented in `.env.example` (`LLM_PROVIDER` / `CLASSIFY_MODEL` / `NOTE_MODEL` /
+   `HF_INFERENCE_PROVIDER`); `ANTHROPIC_API_KEY` stays the default + one-switch fallback.
+   `requirements.txt` `huggingface_hub` floor bumped to `>=0.30` (Inference Providers API).
+4. [ ] **(operator/eval)** Run `eval/run_eval.py` against `relevance_set.json` for candidate
+   HF models (`LLM_PROVIDER=hf CLASSIFY_MODEL=… NOTE_MODEL=…`); record per-area precision vs
+   the Anthropic baseline. Needs HF inference credits.
+5. [ ] **(gated on #4)** Flip the default to `hf` only if within tolerance; else keep
+   anthropic and document the gap.
+6. [ ] **(deferred — monitoring)** Credit-usage check in the weekly Job (warn before
+   pay-as-you-go spill on backfills). No stable "included-credits-remaining" API surfaced
+   to hook yet; left as a later add.
+7. [x] Q&A answer model (`qa/answer.py`) recorded as intentionally excluded pending a
+   groundedness-eval ADR — in `CLAUDE.md`, restated in `pipeline/llm.py` + `.env.example`.
 
 ## References
 
