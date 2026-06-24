@@ -105,6 +105,11 @@ stays the live-send gate. A Job is a fresh container — it can't read Space sec
 timeout. Promote the embedding step with `FLAVOR=cpu-upgrade scripts/hf_job.sh …` (or
 a GPU flavor) only once wall-clock justifies it — a flag, not a code change. HF Jobs
 is pay-as-you-go per second, so watch Jobs billing; a weekly ~30-min CPU job is small.
+**Jobs draw from a funded pre-paid credit balance** — PRO's included credits are for
+*Inference Providers*, NOT Jobs compute, so an otherwise-entitled account still fails
+submit with `402 Payment Required: Pre-paid credit balance is insufficient` until you
+add credits at <https://huggingface.co/settings/billing>. (Until then the GitHub Actions
+cron in `weekly.yml` remains the live scheduler — nothing is broken, the cutover just waits.)
 
 ## 2. Online Space (Hugging Face) — Phase 5
 
