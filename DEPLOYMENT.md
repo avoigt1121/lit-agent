@@ -74,7 +74,11 @@ runner + scheduler change only — same `python -m pipeline.run_weekly -v`, same
 `pip install -r requirements.txt`, and runs the module — mirroring the Actions steps.
 
 **Prereqs:** install the CLI (`curl -LsSf https://hf.co/cli/install.sh | bash`) and
-`hf auth login`. Two credentials are resolved + forwarded **automatically** by
+`hf auth login` **with a token that has Jobs-write permission** — a classic **Write**
+token is simplest (it also covers the corpus Dataset push the real run needs); a
+fine-grained token must explicitly grant the Jobs/compute permission. A read or limited
+token fails at submit with `403 ... missing permissions: job.write` (on *any* namespace).
+Two credentials are resolved + forwarded **automatically** by
 `hf_job.sh`, so they need not live in any file: **`HF_TOKEN`** (from your login) and
 **`ANTHROPIC_API_KEY`** (from your shell env, else the macOS keychain — set once with
 `security add-generic-password -s ANTHROPIC_API_KEY -a "$USER" -w 'sk-ant-...'`; or skip
