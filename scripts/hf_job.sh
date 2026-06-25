@@ -29,6 +29,11 @@
 #   scripts/hf_job.sh schedule    # register the weekly cron scheduled Job
 #   scripts/hf_job.sh ps          # list scheduled Jobs + status
 #   scripts/hf_job.sh unschedule  # delete a scheduled Job (lists ids, prompts)
+#   scripts/hf_job.sh backfill    # ONE-OFF: LLM-classify the historical backlog (scripts/classify_backfill.py)
+#
+# `backfill` is a deliberately separate, ONE-OFF Job (`hf jobs run`, never `scheduled run`)
+# — it is ~13k sequential LLM calls (~2-3h), resumable, and must NEVER ride the weekly cron.
+# It runs `scripts.classify_backfill`, NOT `pipeline.run_weekly`, with a longer default timeout.
 #
 # Override via env (all have sensible defaults matching weekly.yml):
 #   FLAVOR=cpu-basic  TIMEOUT=30m  IMAGE=python:3.11  REF=main  SECRETS_FILE=.env
@@ -36,6 +41,8 @@
 #   LLM_PROVIDER=hf  CLASSIFY_MODEL=…  NOTE_MODEL=…  (forwarded to the Job when set)
 #   HF_XET_HIGH_PERFORMANCE=1        (ADR-0001: high-throughput Xet transfer; on by default, 0 to disable)
 #   RUN_ARGS="--no-sync --no-send"   (extra flags appended to run_weekly, e.g. a smoke test)
+#   BACKFILL_TIMEOUT=4h              (timeout for the `backfill` Job; the run is hours, not minutes)
+#   BACKFILL_ARGS="--limit 100"      (extra flags appended to classify_backfill, e.g. a smoke test)
 set -uo pipefail
 
 FLAVOR="${FLAVOR:-cpu-basic}"            # ADR-0001: start at CPU parity; GPU is a flag away (e.g. FLAVOR=cpu-upgrade / a10g-small)
@@ -52,6 +59,14 @@ BOOTSTRAP="git clone --depth 1 --branch ${REF} ${REPO_URL} /tmp/lit-agent \
 && cd /tmp/lit-agent \
 && pip install --no-cache-dir -q -r requirements.txt \
 && python -m pipeline.run_weekly -v ${RUN_ARGS:-}"
+
+# Same clone+install, but the entrypoint is the ONE-OFF classify backfill (NOT the
+# weekly pipeline). Resumable: a timeout-killed Job re-runs and skips processed papers.
+BACKFILL_TIMEOUT="${BACKFILL_TIMEOUT:-4h}"
+BACKFILL_BOOTSTRAP="git clone --depth 1 --branch ${REF} ${REPO_URL} /tmp/lit-agent \
+&& cd /tmp/lit-agent \
+&& pip install --no-cache-dir -q -r requirements.txt \
+&& python -m scripts.classify_backfill -v ${BACKFILL_ARGS:-}"
 
 require_cli() {
   command -v hf >/dev/null 2>&1 || {
@@ -138,7 +153,15 @@ case "${1:-}" in
   schedule)
     require_cli; preflight_secrets; build_args
     echo "-> scheduling weekly HF Job:  cron='$CRON'  flavor=$FLAVOR  ref=$REF" >&2
+    # Only ever schedules pipeline.run_weekly (BOOTSTRAP). The classify backfill is
+    # intentionally NOT schedulable here — it is a one-off (`backfill` case below).
     exec hf jobs scheduled run "$CRON" "${ARGS[@]}" -- "$IMAGE" bash -c "$BOOTSTRAP"
+    ;;
+  backfill)
+    # ONE-OFF only — `hf jobs run`, never `scheduled run`. Longer timeout (hours).
+    require_cli; preflight_secrets; TIMEOUT="$BACKFILL_TIMEOUT"; build_args
+    echo "-> ONE-OFF classify-backfill HF Job (NOT scheduled):  flavor=$FLAVOR  timeout=$TIMEOUT  ref=$REF" >&2
+    exec hf jobs run "${ARGS[@]}" -- "$IMAGE" bash -c "$BACKFILL_BOOTSTRAP"
     ;;
   ps)
     require_cli
@@ -151,7 +174,7 @@ case "${1:-}" in
     [ -n "${id:-}" ] && hf jobs scheduled delete "$id" || echo "cancelled."
     ;;
   *)
-    echo "usage: $0 {run|schedule|ps|unschedule}" >&2
+    echo "usage: $0 {run|schedule|ps|unschedule|backfill}" >&2
     exit 2
     ;;
 esac
