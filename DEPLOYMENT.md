@@ -91,8 +91,13 @@ stays the live-send gate. A Job is a fresh container — it can't read Space sec
 **Cutover (run in this order — do NOT flip the Actions schedule until HF is proven):**
 
 1. **Verify one full run** end-to-end on HF (dry-run, `SEND_LIVE=0`):
-   `scripts/hf_job.sh run` — streams logs; exits non-zero on failure. Confirms
-   corpus pull → harvest → embed → persist → digest (dry-run) → push.
+   `scripts/hf_job.sh run`. **Monitor via the API, not the local stream** — the
+   `hf jobs run` stream drops early and returns a misleading `exit=0`, and `hf jobs ps`
+   crashes on the current CLI; poll the stage with `python -c "from huggingface_hub import
+   HfApi; print(HfApi().inspect_job(job_id='<id>', namespace='anne-voigt').status.stage)"`
+   (get `<id>` from `HfApi().list_jobs(namespace='anne-voigt')`). Confirms corpus pull →
+   harvest → embed → persist → digest (dry-run) → push. A clean dry-run **COMPLETES in
+   ~5 min** on `cpu-basic` (validated 2026-06-25, ADR-0001).
 2. **Register the weekly schedule:** `scripts/hf_job.sh schedule` (cron `0 13 * * 1`,
    UTC — same cadence as `weekly.yml`). Check it with `scripts/hf_job.sh ps`.
 3. **Only after a clean scheduled run, retire the duplicate cron:** edit
@@ -102,9 +107,19 @@ stays the live-send gate. A Job is a fresh container — it can't read Space sec
    digest goes out twice.
 
 **Hardware / cost:** defaults to `cpu-basic` (parity with Actions) and a 30-minute
-timeout. Promote the embedding step with `FLAVOR=cpu-upgrade scripts/hf_job.sh …` (or
-a GPU flavor) only once wall-clock justifies it — a flag, not a code change. HF Jobs
-is pay-as-you-go per second, so watch Jobs billing; a weekly ~30-min CPU job is small.
+timeout; a clean dry-run completes in ~5 min (well inside it). Promote the embedding step
+with `FLAVOR=cpu-upgrade scripts/hf_job.sh …` (or a GPU flavor) only once wall-clock
+justifies it — a flag, not a code change. HF Jobs is pay-as-you-go per second, so watch
+Jobs billing; a weekly ~5-min CPU job is tiny.
+
+**Throughput (ADR-0001 finding).** Getting a full run under the timeout took two fixes
+beyond the runner: (a) `build_corpus` now embeds/classifies **only new papers** —
+re-processing the whole 46.5k corpus every run was a multi-hour floor on CPU and the real
+timeout cause (not transfer); and (b) transfers ride **Xet** (`hf_xet`, bundled with
+`huggingface_hub` 1.x), with `HF_XET_HIGH_PERFORMANCE=1` set by `hf_job.sh` to ride out an
+intermittent per-connection throttle on the HF-Hub↔Job network. Xet also chunk-dedups the
+push (the unchanged `vectors.npz` re-uploads as ~0.4 MB). `hf_transfer` is deprecated/unused
+in hub 1.x — do not re-add it.
 **Jobs draw from a funded pre-paid credit balance** — PRO's included credits are for
 *Inference Providers*, NOT Jobs compute, so an otherwise-entitled account still fails
 submit with `402 Payment Required: Pre-paid credit balance is insufficient` until you

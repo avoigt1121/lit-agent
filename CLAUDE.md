@@ -229,13 +229,19 @@ coupled (0002 runs inside 0001's Job). Per-action-item status lives in each ADR 
 
 - **ADR-0001 — weekly offline pipeline → HF Jobs.** Move `pipeline.run_weekly` off the
   GitHub Actions cron onto **HF Jobs** (same `0 13 * * 1` cron, same entrypoint, CPU
-  first / GPU only on demonstrated need). Runner+scheduler change only — no change to
-  harvest/normalize/score/digest, `config/*.yaml`, corpus schema, or the Space.
-  `.github/workflows/weekly.yml` stays as documented fallback (dual-run during cutover).
-  **Status:** runner authored in `scripts/hf_job.sh` (clone-in-`python:3.11` Job; AI#1/#7
-  done, see `DEPLOYMENT.md` §1b). Remaining = operator setup (`ANTHROPIC_API_KEY` via
-  keychain/env + optional `.env` for `CORPUS_HF_DATASET` etc.) → `hf_job.sh run` (verify)
-  → `schedule` → remove `weekly.yml`'s `schedule:` block at cutover.
+  first / GPU only on demonstrated need). Runner+scheduler change, plus one scoped
+  scoring-path fix (see Status); no change to harvest/normalize/digest, `config/*.yaml`,
+  corpus schema, or the Space. `.github/workflows/weekly.yml` stays as documented fallback
+  (dual-run during cutover).
+  **Status (2026-06-25):** runner in `scripts/hf_job.sh`; **a full dry-run now COMPLETES in
+  ~5 min on `cpu-basic` (validated, job `6a3d5782…`).** Two fixes beyond the runner got it
+  there (branch `adr-0001-hf-jobs-throughput`, awaiting lead OK to merge to `main`):
+  `build_corpus` embeds/classifies **only new papers** — re-processing the whole 46.5k
+  corpus every run (not transfer) was the real multi-hour timeout cause — and transfers use
+  **Xet** + `HF_XET_HIGH_PERFORMANCE` (not the deprecated `hf_transfer`), which also
+  chunk-dedups the push (`vectors.npz` re-upload: 72.8 MB → ~0.4 MB). Remaining = operator
+  setup (`ANTHROPIC_API_KEY` via keychain/env + optional `.env` for `CORPUS_HF_DATASET`
+  etc.) → `hf_job.sh schedule` → remove `weekly.yml`'s `schedule:` block at cutover.
 - **ADR-0002 — cheap classifier + relevance note → HF Inference Providers.** Add a
   config-overridable `LLM_PROVIDER` / `CLASSIFIER_MODEL` (mirroring `EMBEDDING_MODEL`)
   for the two cheap offline scoring steps, **eval-gated** on `relevance_set.json`;
