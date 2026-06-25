@@ -34,6 +34,7 @@
 #   FLAVOR=cpu-basic  TIMEOUT=30m  IMAGE=python:3.11  REF=main  SECRETS_FILE=.env
 #   REPO_URL=https://github.com/avoigt1121/lit-agent  CRON="0 13 * * 1"  NAMESPACE=
 #   LLM_PROVIDER=hf  CLASSIFY_MODEL=…  NOTE_MODEL=…  (forwarded to the Job when set)
+#   HF_HUB_ENABLE_HF_TRANSFER=1      (ADR-0001: accelerated HF transfer; on by default, 0 to disable)
 #   RUN_ARGS="--no-sync --no-send"   (extra flags appended to run_weekly, e.g. a smoke test)
 set -uo pipefail
 
@@ -110,6 +111,11 @@ preflight_secrets() {
 build_args() {
   local k v
   ARGS=(--flavor "$FLAVOR" --timeout "$TIMEOUT" --secrets HF_TOKEN)
+  # ADR-0001 throughput fix: un-throttle the BGE-small model pull + the ~225 MB corpus push.
+  # The HF-Hub<->Job-container network is per-connection throttled (~97 kB/s observed), which
+  # timed out full runs; hf_transfer (in requirements.txt) parallel-chunks both. On by default,
+  # overridable (HF_HUB_ENABLE_HF_TRANSFER=0) — set BEFORE pip so the run, not install, uses it.
+  ARGS+=(-e "HF_HUB_ENABLE_HF_TRANSFER=${HF_HUB_ENABLE_HF_TRANSFER:-1}")
   [ -f "$SECRETS_FILE" ] && ARGS+=(--secrets-file "$SECRETS_FILE")
   [ "$_forward_anthropic" = "yes" ] && ARGS+=(--secrets ANTHROPIC_API_KEY)
   for k in LLM_PROVIDER CLASSIFY_MODEL NOTE_MODEL HF_INFERENCE_PROVIDER; do

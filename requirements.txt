@@ -13,6 +13,10 @@ numpy>=1.23
 rapidfuzz>=3.0          # fuzzy-title dedup
 fastembed>=0.3          # LOCAL embeddings (BGE-small, ONNX — no API key/torch)
 huggingface_hub>=0.30   # corpus push/pull + HF Inference Providers for the cheap LLM steps (ADR-0002)
+hf_transfer>=0.1.6      # Rust-accelerated, parallel-chunked HF up/download. ADR-0001: the HF-Hub<->Job
+                        # network is per-connection throttled (~97 kB/s), so the single-stream model
+                        # pull + ~225 MB corpus push time out; hf_transfer un-throttles both. Activated by
+                        # HF_HUB_ENABLE_HF_TRANSFER=1 (set in scripts/hf_job.sh); harmless if the flag is off.
 
 # --- Phase 2: interest model + digest ---
 anthropic>=0.40         # LLM classify-confirm + relevance notes (optional; needs ANTHROPIC_API_KEY)
