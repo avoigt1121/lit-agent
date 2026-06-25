@@ -233,15 +233,17 @@ coupled (0002 runs inside 0001's Job). Per-action-item status lives in each ADR 
   scoring-path fix (see Status); no change to harvest/normalize/digest, `config/*.yaml`,
   corpus schema, or the Space. `.github/workflows/weekly.yml` stays as documented fallback
   (dual-run during cutover).
-  **Status (2026-06-25):** runner in `scripts/hf_job.sh`; **a full dry-run now COMPLETES in
-  ~5 min on `cpu-basic` (validated, job `6a3d5782…`).** Two fixes beyond the runner got it
-  there (branch `adr-0001-hf-jobs-throughput`, awaiting lead OK to merge to `main`):
-  `build_corpus` embeds/classifies **only new papers** — re-processing the whole 46.5k
-  corpus every run (not transfer) was the real multi-hour timeout cause — and transfers use
-  **Xet** + `HF_XET_HIGH_PERFORMANCE` (not the deprecated `hf_transfer`), which also
-  chunk-dedups the push (`vectors.npz` re-upload: 72.8 MB → ~0.4 MB). Remaining = operator
-  setup (`ANTHROPIC_API_KEY` via keychain/env + optional `.env` for `CORPUS_HF_DATASET`
-  etc.) → `hf_job.sh schedule` → remove `weekly.yml`'s `schedule:` block at cutover.
+  **Status (2026-06-25):** runner in `scripts/hf_job.sh`; the two throughput fixes are now
+  **merged to `main`** (`8150495` — `build_corpus` embeds/classifies **only new papers**, the
+  real multi-hour timeout cause, not transfer; `3489521` — **Xet** + `HF_XET_HIGH_PERFORMANCE`,
+  not the deprecated `hf_transfer`, which also chunk-dedups the push, `vectors.npz` 72.8 MB →
+  ~0.4 MB). A full dry-run COMPLETES in ~5 min on `cpu-basic` (validated, job `6a3d5782…`).
+  **Weekly HF schedule now REGISTERED** (`scripts/hf_job.sh schedule`, 2026-06-25):
+  scheduled-job id `6a3d720b81727949c74c224f`, cron `0 13 * * 1`, **first run
+  `2026-06-29 13:00 UTC`**, dry-run (no `SEND_LIVE`). The GitHub Actions cron in `weekly.yml`
+  stays ON until then (safe dual-run). Remaining = verify that first scheduled run COMPLETES
+  cleanly, then remove `weekly.yml`'s `schedule:` block (keep `workflow_dispatch`) on a branch
+  + merge with the lead.
 - **ADR-0002 — cheap classifier + relevance note → HF Inference Providers.** Add a
   config-overridable `LLM_PROVIDER` / `CLASSIFIER_MODEL` (mirroring `EMBEDDING_MODEL`)
   for the two cheap offline scoring steps, **eval-gated** on `relevance_set.json`;

@@ -162,18 +162,27 @@ Work landed on branch `adr-0001-hf-jobs-throughput` (not yet merged to `main`).
    entrypoint is a package module (`python -m pipeline.run_weekly`) that needs the whole
    repo + `config/*.yaml`, and the repo has no pyproject/packaging — so clone-in-image is
    the faithful 1:1 mirror of the Actions checkout→install→run steps.
-2. [ ] **(operator)** Provide secrets to the Job. `HF_TOKEN` (from `hf auth login`) and
-   `ANTHROPIC_API_KEY` (from shell env, else the macOS keychain) are resolved + forwarded
-   automatically by `hf_job.sh` — set the key once via `security add-generic-password -s
-   ANTHROPIC_API_KEY -a "$USER" -w 'sk-ant-...'`, or skip it with `LLM_PROVIDER=hf`. The
-   rest goes in an optional gitignored `.env`: `CORPUS_HF_DATASET` (required), `EMAIL_*`,
-   `RESEND_API_KEY`, `NCBI_API_KEY`, `SEND_LIVE`.
-3. [ ] **(operator)** Register the schedule: `scripts/hf_job.sh schedule` (cron
-   `"0 13 * * 1"`, UTC — same as `weekly.yml`); confirm with `scripts/hf_job.sh ps`.
-4. [ ] **Deferred to cutover (sequencing):** set `weekly.yml` to `workflow_dispatch`-only
-   (remove the `schedule:` block) **only after** a clean scheduled HF run — flipping it
-   now would leave a window with no scheduled run; never flipping means both crons fire
-   and the digest double-sends. Command authored; intentionally not yet applied.
+2. [x] **(operator) — verified 2026-06-25.** Secrets reach the Job and credentials check out:
+   `HF_TOKEN` is the login token (`role: write` → carries `job.write`); `ANTHROPIC_API_KEY`
+   resolves from the macOS keychain — both forwarded automatically by `hf_job.sh`.
+   `CORPUS_HF_DATASET` (required), `EMAIL_*`, and `RESEND_API_KEY` ride the gitignored `.env`
+   via `--secrets-file`. `SEND_LIVE` is absent from `.env` *and* from the scheduled job's
+   forwarded-secrets list → **dry-run guaranteed**. Billing is funded: the one-off run
+   `6a3d5782…` reached `COMPLETED` today, which a `402` (insufficient pre-paid credit) would
+   have blocked at submit. (Re-set the key if ever cleared: `security add-generic-password
+   -s ANTHROPIC_API_KEY -a "$USER" -w 'sk-ant-...'`, or skip with `LLM_PROVIDER=hf`.)
+3. [x] **(operator) — done 2026-06-25.** Registered with `scripts/hf_job.sh schedule` →
+   scheduled-job **id `6a3d720b81727949c74c224f`**, cron `0 13 * * 1` (UTC, = `weekly.yml`),
+   `cpu-basic`, `ref=main`, `suspend=False`, **first run `2026-06-29 13:00 UTC`**. Confirmed
+   via `HfApi().list_scheduled_jobs(namespace="anne-voigt")` — `scripts/hf_job.sh ps`
+   (`hf jobs scheduled ps`) crashes on CLI 1.2.4 (`OSError: Inappropriate ioctl for device`).
+4. [ ] **Deferred to cutover (sequencing) — armed 2026-06-25, not yet applied.** With the HF
+   schedule registered (#3), the GitHub Actions cron in `weekly.yml` is deliberately LEFT ON
+   so a scheduler always exists (safe dual-run: both fire Mondays, both dry-run via the
+   absent `SEND_LIVE`). **After the first scheduled HF run (`2026-06-29 13:00 UTC`) is
+   verified `COMPLETED`,** set `weekly.yml` to `workflow_dispatch`-only (remove the
+   `schedule:` block) on a branch and coordinate the merge with the lead. Flipping earlier
+   leaves a window with no scheduled run; never flipping double-fires the digest.
 5. [x] **Verified one full HF Jobs run end-to-end** (`scripts/hf_job.sh run`, `SEND_LIVE=0`
    dry-run, job `6a3d57825f9c8079e0fb3a9e`): pull → harvest → embed/classify only the 96 new
    papers → digest dry-run → Xet push — **COMPLETED in 5m21s** on `cpu-basic`. Required the
