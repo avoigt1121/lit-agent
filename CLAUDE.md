@@ -124,6 +124,12 @@ reproducible.
 - **Persistence:** HF Space storage is ephemeral — commit the SQLite file + index to a
   durable store (HF Dataset repo or external DB) at the end of each run; the Space loads
   it read-only at startup.
+- **Retention (PRO storage):** keep corpus snapshots across runs rather than minimizing
+  them. PRO's 1 TB private tier removes the old pressure to prune for space, so corpus
+  history — including the schema-v5 `excluded` / `excluded_reason` soft-flag state — stays
+  recoverable. The persistence mechanism is unchanged (pipeline pushes; Space pulls
+  read-only); only the posture changes: retain, don't trim. Aligns with the cross-repo
+  private-by-default storage decision (ADR-0005 in the `DecoupleRpy_Agent` repo).
 
 ## Prompt skeletons
 
