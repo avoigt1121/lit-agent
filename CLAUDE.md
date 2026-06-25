@@ -244,6 +244,21 @@ coupled (0002 runs inside 0001's Job). Per-action-item status lives in each ADR 
   stays ON until then (safe dual-run). Remaining = verify that first scheduled run COMPLETES
   cleanly, then remove `weekly.yml`'s `schedule:` block (keep `workflow_dispatch`) on a branch
   + merge with the lead.
+  **Backlog backfill (companion to the "only new papers" fix — `scripts/classify_backfill.py`,
+  `26e97a8`):** classifying only NEW papers each run leaves the census's already-ingested
+  backlog unclassified — the census tagged the whole corpus with the EMBEDDING-ONLY path
+  (`classify_and_score(client=None)`), so every row below the 0.68 floor sits at `focus_areas=[]`
+  / `relevance_score=0.0`. This one-off re-runs JUST those rows through the cheap LLM (top-k +
+  confirm — the real precision lever), reusing each paper's stored vector via `VectorIndex.get()`
+  (**no re-embedding**), and persists `focus_areas` + `topic_tags`. Resumable via its own
+  `classify_backfill_progress` table (an empty LLM result is valid, so neither `focus_areas` nor
+  `relevance_score` can mark progress); WAL-checkpointed before each hub push; **gated out of the
+  weekly cron** (own module, never imported by `run_weekly`; HF-Job mode is one-off `hf jobs run`
+  / `hf_job.sh backfill`, never `scheduled run`). **Ran 2026-06-25: 13,304 processed → 1,715
+  rescued with ≥1 area, 11,589 left empty (LLM confirmed none fit), pushed to
+  `anne-voigt/bcc-lit-corpus`; re-run is a no-op (next-run todo = 0).** Why it matters: the
+  post-v1 per-area Space tabs + analytics-by-area now see the whole corpus, not just the weekly
+  trickle.
 - **ADR-0002 — cheap classifier + relevance note → HF Inference Providers.** Add a
   config-overridable `LLM_PROVIDER` / `CLASSIFIER_MODEL` (mirroring `EMBEDDING_MODEL`)
   for the two cheap offline scoring steps, **eval-gated** on `relevance_set.json`;
