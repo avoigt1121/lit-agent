@@ -84,19 +84,36 @@ def build_corpus(records: list[dict], window: dict, *, db_path: Path = DEFAULT_D
     if do_embed:
         embedder = Embedder()
         all_papers = list(db.iter_papers(conn))
-        vectors = embed_corpus(all_papers, embedder)
-        index = VectorIndex()
-        for p in all_papers:
-            index.add(p["embedding_id"], vectors[p["embedding_id"]])
+        new_set = set(new_ids)
+
+        # INCREMENTAL embed (ADR-0001): the durable index is pulled from the hub, so only
+        # papers not already in it need embedding — in steady state just this run's new
+        # papers. Re-embedding the whole census-scale corpus every run (and rebuilding a
+        # fresh index, discarding the pull) was a multi-hour runtime floor on HF Jobs.
+        index = VectorIndex.load(index_path) if Path(index_path).exists() else VectorIndex()
+        to_embed = [p for p in all_papers if p["embedding_id"] not in index]
+        new_vectors = embed_corpus(to_embed, embedder) if to_embed else {}
+        for p in to_embed:
+            index.add(p["embedding_id"], new_vectors[p["embedding_id"]])
         index.save(index_path)
 
+        # INCREMENTAL classify (ADR-0001): with an LLM client this is one call per paper,
+        # so classifying the whole corpus every run was hours. Only papers NEW this run are
+        # classified; existing focus_areas/tags persist in SQLite (census/prior runs). The
+        # historical unclassified backlog stays the census's job, not the weekly digest's.
         profile = load_interest_profile(PROFILE_PATH)
-        tags = classify_and_score(all_papers, vectors, profile, embedder, client=client)
-        db.upsert_papers(conn, all_papers)  # persist focus_areas + relevance_score
-        for p in all_papers:
-            db.set_topic_tags(conn, p["paper_id"], tags.get(p["paper_id"], {}))
-            for aid in p.get("focus_areas") or []:
-                area_counts[aid] = area_counts.get(aid, 0) + 1
+        to_classify = [p for p in all_papers if p["paper_id"] in new_set]
+        if to_classify:
+            vecs = {}
+            for p in to_classify:  # new papers are always freshly embedded above; fall back
+                v = new_vectors.get(p["embedding_id"])  # to the index for any rare carry-over
+                vecs[p["paper_id"]] = v if v is not None else index.get(p["embedding_id"])
+            tags = classify_and_score(to_classify, vecs, profile, embedder, client=client)
+            db.upsert_papers(conn, to_classify)  # persist focus_areas + relevance_score
+            for p in to_classify:
+                db.set_topic_tags(conn, p["paper_id"], tags.get(p["paper_id"], {}))
+                for aid in p.get("focus_areas") or []:
+                    area_counts[aid] = area_counts.get(aid, 0) + 1
 
     db.record_run(conn, date.today().isoformat(), window.get("from", ""),
                   window.get("to", ""), n_harvested=len(records),

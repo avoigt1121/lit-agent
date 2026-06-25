@@ -23,6 +23,7 @@ class VectorIndex:
         self._rows: list[np.ndarray] = []   # staged adds before finalize
         self._matrix: np.ndarray | None = None  # finalized (n, dim), normalized
         self._id_set: set[str] | None = None    # lazy membership cache (see __contains__)
+        self._pos: dict[str, int] | None = None  # lazy id->row map (see get())
 
     @staticmethod
     def _normalize(v: np.ndarray) -> np.ndarray:
@@ -40,6 +41,7 @@ class VectorIndex:
         self._rows.append(v)
         self._matrix = None   # invalidate finalized cache
         self._id_set = None   # invalidate membership cache
+        self._pos = None      # invalidate id->row map
 
     def _finalize(self) -> None:
         if self._matrix is None:
@@ -78,6 +80,18 @@ class VectorIndex:
         if self._id_set is None or len(self._id_set) != len(self._ids):
             self._id_set = set(self._ids)
         return embedding_id in self._id_set
+
+    def get(self, embedding_id: str) -> np.ndarray | None:
+        """Return the stored (L2-normalized) vector for an id, or None if absent.
+
+        Lets the incremental weekly path (ADR-0001) reuse an already-embedded
+        paper's vector for classification instead of re-embedding it. Backed by a
+        lazy id->row map, invalidated on add() like the membership cache."""
+        self._finalize()
+        if self._pos is None or len(self._pos) != len(self._ids):
+            self._pos = {eid: i for i, eid in enumerate(self._ids)}
+        i = self._pos.get(embedding_id)
+        return None if i is None else self._matrix[i]
 
     def save(self, path: str | Path) -> None:
         self._finalize()
