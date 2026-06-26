@@ -314,6 +314,17 @@ no "see all". Resolution = host the FULL lists on the Space + link from the emai
   blocks append a "See all … on the site →" link to the Space tab; omitted
   gracefully when unset (local dry-runs show no dead link). The trials block keeps
   its existing ClinicalTrials.gov deep link regardless.
-- **Remaining to go live end-to-end:** the lit-agent Space isn't deployed yet (no
-  HF Space remote — standalone repo, Phase 5). Deploy it, then set `SPACE_URL` in
-  the Space + the pipeline env so the email links resolve.
+- **DEPLOYED (2026-06-26).** Space **`anne-voigt/bcc-lit-agent`** (PUBLIC, gradio
+  sdk) is live + RUNNING at https://anne-voigt-bcc-lit-agent.hf.space (both tabs
+  confirmed). `git remote space` = the Space; deploy is `git push space main`
+  (force was used for the first push over HF's empty-repo seed). Space pulls the
+  corpus + the two trend JSON caches from `anne-voigt/bcc-lit-corpus`
+  (`pull_from_hub` / `sync_to_hub` now carry `analytics.json` +
+  `translational_motion.json`; uploaded once manually for this first deploy).
+  Space secrets: `HF_TOKEN`, `ANTHROPIC_API_KEY`; `CORPUS_HF_DATASET` is a Space
+  **variable** (not secret). `SPACE_URL` set in the pipeline `.env` so the email's
+  two trend blocks now render "See all … on the site →" (verified: 33 rising
+  terms / 48 trials).
+  **Gotcha:** the Space first showed `CONFIG_ERROR` "Collision on variables and
+  secrets names" — a name set as BOTH a Space variable and a secret. Fix = pick
+  one (deleted the `CORPUS_HF_DATASET` secret, kept the variable) and factory-reboot.
