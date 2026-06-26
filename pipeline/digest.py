@@ -77,16 +77,38 @@ def relevance_note(rec: dict, area: dict, client=None) -> str:
 
 
 def topic_intro(area: dict, items: list[dict], client=None) -> str:
+    """A short overview that opens each focus-area section.
+
+    With an LLM client this is a 2–3 sentence synthesis of THIS WEEK's papers in
+    the area — the recurring themes/threads across the titles+abstracts, what's
+    notable, where the activity is concentrated — grounded only in the papers
+    shown. Without a client it falls back to the area's static audience_note.
+
+    Roadmap: this overview is the natural hook for the post-v1 "cross-pollinate
+    with OHSU areas of interest" step — a later pass can extend the prompt with
+    OHSU/BCC lab interests so the overview also flags overlap. Kept as one
+    function so that's a prompt change, not a structural one.
+    """
     if client is not None and items:
         try:
-            titles = "; ".join((p.get("title") or "")[:120] for p in items[:5])
+            # title + a short abstract snippet gives the model real content to
+            # extrapolate from, not just titles.
+            digest_in = "\n".join(
+                f"- {(p.get('title') or '').strip()[:160]}"
+                + (f" — {_first_sentence(p.get('abstract'), 220)}" if p.get("abstract") else "")
+                for p in items[:8])
             note = " ".join((area.get("audience_note") or "").split())
             prompt = (
-                f"Write ONE short sentence introducing this week's papers in the "
-                f"focus area '{area['name']}' for this audience: {note}\n"
-                f"This week's titles: {titles}\nNo overstatement. One sentence:")
+                f"You are writing the opening overview for the '{area['name']}' section of a "
+                f"weekly PDAC literature digest for this audience: {note}\n\n"
+                f"This week's papers in this area:\n{digest_in}\n\n"
+                "In 2–3 sentences, give an OVERVIEW of what this week's papers collectively "
+                "cover: the recurring themes or threads, what stands out, and where the "
+                "activity is concentrated. Synthesize across the papers — do not just list "
+                "them. Use ONLY claims supported by the titles/abstracts above; no hype, no "
+                "overstatement. Overview:")
             resp = client.messages.create(
-                model=NOTE_MODEL, max_tokens=140,
+                model=NOTE_MODEL, max_tokens=320,
                 messages=[{"role": "user", "content": prompt}])
             return resp.content[0].text.strip()
         except Exception:
@@ -187,8 +209,8 @@ def build_digest_html(papers: list[dict], profile: dict, window: dict,
     else:  # dry_run
         banner = ('<div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid '
                   '#fde68a;border-radius:6px;padding:8px 10px;margin:12px 0;">DRY RUN — not sent. '
-                  + ('' if confirmed else 'Classification is embedding-only (not yet LLM-confirmed); '
-                     'narrow targets like MYC/HuR may include off-topic papers until an Anthropic key is added. ')
+                  + ('' if confirmed else 'Classification is embedding-only (not yet LLM-confirmed), '
+                     'so focus-area matches may include some off-topic papers until an Anthropic key is added. ')
                   + 'Relevance notes are ' + ('LLM-written from the abstract.' if confirmed
                                               else 'the abstract\'s first sentence (no LLM key set).')
                   + '</div>')
@@ -211,8 +233,12 @@ def build_digest_html(papers: list[dict], profile: dict, window: dict,
             f'<h2 style="font-size:17px;margin:22px 0 2px;border-bottom:2px solid #111;padding-bottom:4px;">'
             f'{_esc(area["name"])} '
             f'<span style="font-size:12px;font-weight:400;color:#6b7280;">({len(items)})</span></h2>')
-        parts.append(f'<div style="font-size:13px;color:#4b5563;font-style:italic;margin:6px 0 4px;">'
-                     f'{_esc(topic_intro(area, items, client))}</div>')
+        parts.append(
+            '<div style="font-size:13px;color:#374151;line-height:1.5;margin:6px 0 10px;'
+            'padding:8px 12px;background:#f9fafb;border-left:3px solid #9bc1e8;border-radius:4px;">'
+            f'<span style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;'
+            f'letter-spacing:.04em;">This week</span><br>'
+            f'{_esc(topic_intro(area, items, client))}</div>')
         parts.append('<table style="width:100%;border-collapse:collapse;">')
         parts.extend(_item_html(p, relevance_note(p, area, client)) for p in items)
         parts.append('</table>')

@@ -136,8 +136,12 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
     conn.close()
     analytics.cache({**adata, "keyword_movers": movers}, ROOT / "data" / "analytics.json")
     pdac_query = load_config().get("europepmc", {}).get("query", "")
-    footer = (analytics.footer_html(adata, profile)
-              + analytics.keyword_movers_html(movers, profile, pdac_query=pdac_query)
+    # Share-of-voice leaderboard (analytics.footer_html) intentionally NOT rendered
+    # in the email: it measured raw Europe PMC keyword-match VOLUME, not the curated
+    # digest, and read as a precision claim it couldn't back. The series is still
+    # computed + cached (analytics.json) for the Space. The keyword movers stay —
+    # each links out to the actual Europe PMC papers, so it's verifiable.
+    footer = (analytics.keyword_movers_html(movers, profile, pdac_query=pdac_query)
               + clinicaltrials.motion_html_from_cache())  # Phase F: cached offline; "" if absent
     html_str = build_digest_html(papers, profile, window, client=client,
                                  analytics_html=footer, mode=mode)

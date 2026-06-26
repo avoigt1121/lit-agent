@@ -269,3 +269,28 @@ coupled (0002 runs inside 0001's Job). Per-action-item status lives in each ADR 
   Providers via an Anthropic-shaped shim), wired at `run_weekly._maybe_client`. Remaining =
   eval candidate HF models on `relevance_set.json`, then flip the default only if precision
   holds. The cheap calls live in `score.py` + `digest.py` (not just `score.py`).
+
+### Decisions resolved (2026-06-25) — digest tuning (lead feedback)
+
+- **Share-of-voice leaderboard pulled from the EMAIL.** `analytics.footer_html`
+  measured raw Europe PMC keyword-match VOLUME (per-area `count_query` hitCounts),
+  not the curated digest, and read as a precision claim it couldn't back (keyword
+  ambiguity inflates it). `make_digest` no longer renders it; the series is still
+  computed + cached to `analytics.json` for the Space. The function stays in
+  `analytics.py` (unused by the digest) for that future Space use.
+- **"What's heating up" (keyword movers) KEPT, with a noise floor.** It's
+  verifiable (each term links to the EPMC papers behind it), so it stays — but
+  `analytics.keyword_movers` now requires a prior-year baseline ≥ `MOVER_MIN_PRIOR`
+  (8) before assigning a %, so a small-base 2→8 blip no longer surfaces as "+300%".
+- **Two too-specific focus areas broadened** (`config/interest_profile.yaml`); the
+  other 6 unchanged. `id`s KEPT for corpus + `coverage_counts` continuity — only
+  name/keywords/`count_query`/`audience_note` widened:
+  - `myc`: "MYC" → **"Oncogenic drivers & gene regulation"** (MYC now a sub-topic).
+  - `hur_elavl1`: "HuR (ELAVL1)" → **"RNA-binding proteins & mRNA regulation"**.
+- **Per-area section now opens with a real OVERVIEW.** `digest.topic_intro` went
+  from a one-sentence caption to a 2–3 sentence LLM synthesis of the week's papers
+  in the area (themes/threads/where activity concentrates), grounded only in the
+  shown titles+abstracts, rendered as a styled "This week" block. Designed as the
+  hook for the post-v1 **cross-pollination with OHSU areas of interest** (a later
+  prompt extension, not a structural change). Falls back to the static
+  `audience_note` with no LLM key.

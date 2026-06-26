@@ -30,25 +30,41 @@ digest:
   top_n_per_area: 6
 
 focus_areas:
+  # id kept as `myc` for continuity with already-classified corpus rows + the
+  # coverage_counts series; the AREA is now the broader "oncogenic drivers & gene
+  # regulation" umbrella, with MYC (a Sears-lab signature) as one sub-topic.
   - id: myc
-    name: MYC
+    name: Oncogenic drivers & gene regulation
     keywords: [MYC, c-MYC, MYC stability, MYC phosphorylation, S62, T58, FBXW7,
-               PP2A, Omomyc, MYC degradation, MYC amplification, MYC targets, MAX]
-    count_query: '(MYC OR "c-MYC" OR MYCN OR Omomyc)'
+               PP2A, Omomyc, MYC degradation, MYC amplification, MYC targets, MAX,
+               oncogene, transcription factor, transcriptional regulation,
+               super-enhancer, chromatin, epigenetic regulation, gene expression,
+               oncogenic signaling]
+    count_query: '(MYC OR "c-MYC" OR MYCN OR Omomyc OR oncogene OR
+                   "transcription factor" OR "transcriptional regulation" OR
+                   super-enhancer)'
     exemplar_dois: []
     audience_note: >
-      MYC regulation in PDAC — stability/phosphorylation (a Sears-lab signature),
-      degradation, transcriptional targets, and MYC-directed therapeutic strategies.
+      Oncogenic drivers and gene-expression control in PDAC — oncogenes and
+      transcription factors (MYC stability/phosphorylation is a Sears-lab
+      signature), transcriptional/epigenetic programs, and strategies that target
+      them.
 
+  # id kept as `hur_elavl1` for corpus + coverage continuity; the AREA is now the
+  # broader "RNA-binding proteins & mRNA regulation" umbrella, with HuR/ELAVL1 (a
+  # Brody-lab focus) as one sub-topic.
   - id: hur_elavl1
-    name: HuR (ELAVL1)
-    keywords: [HuR, ELAVL1, RNA-binding protein, mRNA stability, AU-rich element,
-               ARE, post-transcriptional regulation, ribonucleoprotein, RNA stability]
-    count_query: '(HuR OR ELAVL1)'
+    name: RNA-binding proteins & mRNA regulation
+    keywords: [HuR, ELAVL1, RNA-binding protein, RBP, mRNA stability, AU-rich element,
+               ARE, post-transcriptional regulation, ribonucleoprotein, RNA stability,
+               splicing, alternative splicing, translation control, m6A, RNA metabolism]
+    count_query: '("RNA-binding protein" OR HuR OR ELAVL1 OR "mRNA stability" OR
+                   "post-transcriptional" OR splicing OR m6A)'
     exemplar_dois: []
     audience_note: >
-      HuR/ELAVL1 post-transcriptional regulation (a Brody-lab focus) — HuR target
-      mRNAs, RNA-binding biology, and HuR-directed therapeutic strategies in PDAC.
+      RNA-binding proteins and post-transcriptional control in PDAC — HuR/ELAVL1
+      (a Brody-lab focus) and other RBPs, mRNA stability / AU-rich-element biology,
+      splicing and translation, and RBP-directed therapeutic strategies.
 
   - id: kras_ras_mapk
     name: KRAS / RAS–MAPK & RAS-targeted therapy

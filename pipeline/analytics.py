@@ -209,11 +209,20 @@ def footer_html(data: dict, profile: dict) -> str:
 # Keyword movers (specific terms; the drill-down beneath the topic rollup)
 # ---------------------------------------------------------------------------
 
+# A keyword needs at least this many papers in the prior 12-mo baseline before a
+# % growth is trustworthy — otherwise a 2→8 blip reads as "+300%" and dominates
+# the strip. Below the floor the term is still tracked but excluded from the
+# movers ranking (pct=None), so "what's heating up" reflects real, sustained rises.
+MOVER_MIN_PRIOR = 8
+
+
 def keyword_movers(conn, profile: dict, top_n: int = 3) -> dict:
     """Per area, the tracked keywords with the largest YoY-style growth.
 
     For each (area, keyword): trailing 4 COMPLETE quarters vs the prior 4 (a
-    rolling-12-month comparison; the partial current quarter is excluded).
+    rolling-12-month comparison; the partial current quarter is excluded). A
+    percentage is only assigned when the prior-year baseline clears
+    MOVER_MIN_PRIOR, so small-count noise doesn't surface as a top mover.
     Returns {area: [{keyword, cur, prior, delta, pct}]} sorted by % growth.
     """
     from collections import defaultdict
@@ -226,7 +235,8 @@ def keyword_movers(conn, profile: dict, top_n: int = 3) -> dict:
         cur = sum(counts[-4:])
         prior = sum(counts[-8:-4]) if len(counts) >= 8 else None
         delta = (cur - prior) if prior is not None else None
-        pct = round(delta / prior * 100) if (prior and prior > 0) else None
+        pct = (round(delta / prior * 100)
+               if (prior and prior >= MOVER_MIN_PRIOR) else None)
         by_area[area].append({"keyword": kw, "cur": cur, "prior": prior, "delta": delta, "pct": pct})
     out = {}
     for area, lst in by_area.items():
