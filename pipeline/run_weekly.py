@@ -130,6 +130,15 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
     """Render the digest (banner per `mode`) + cache analytics. Returns (path, html)."""
     conn = db.connect(db_path)
     papers = list(db.iter_papers(conn, include_excluded=False))  # skip quarantined rows
+    # Restrict to papers NEW in this window: "new" is keyed on first_seen_date
+    # (see store/db.py). Without this the digest renders the ENTIRE corpus, so
+    # last year's high-relevance census papers crowd out this week's harvest.
+    w_from, w_to = window.get("from"), window.get("to")
+    if w_from or w_to:
+        papers = [p for p in papers
+                  if (fsd := p.get("first_seen_date"))
+                  and (not w_from or fsd >= w_from)
+                  and (not w_to or fsd <= w_to)]
     profile = load_interest_profile(PROFILE_PATH)
     adata = analytics.compute_trends(conn)
     movers = analytics.keyword_movers(conn, profile)
