@@ -196,7 +196,14 @@ def pull_from_hub(db_path: Path = DEFAULT_DB, index_path: Path = DEFAULT_INDEX) 
         return False
     from huggingface_hub import hf_hub_download
     ok = False
-    for remote, local in (("corpus.sqlite", db_path), ("vectors.npz", index_path)):
+    # corpus.sqlite + vectors.npz drive Q&A; the two JSON caches back the Space's
+    # "Trends & Translational Motion" tab (the digest's full lists). All are pushed
+    # by sync_to_hub so the Space serves exactly what the pipeline produced.
+    data_dir = DEFAULT_DB.parent
+    targets = (("corpus.sqlite", db_path), ("vectors.npz", index_path),
+               ("analytics.json", data_dir / "analytics.json"),
+               ("translational_motion.json", data_dir / "translational_motion.json"))
+    for remote, local in targets:
         try:
             p = hf_hub_download(repo_id=repo, repo_type="dataset", filename=remote, token=token)
             Path(local).parent.mkdir(parents=True, exist_ok=True)
@@ -225,7 +232,15 @@ def sync_to_hub(db_path: Path = DEFAULT_DB, index_path: Path = DEFAULT_INDEX) ->
     if Path(index_path).exists():
         api.upload_file(path_or_fileobj=str(index_path), path_in_repo="vectors.npz",
                         repo_id=repo, repo_type="dataset")
-    logger.info("Synced corpus to HF Dataset %s", repo)
+    # The small JSON caches backing the Space's Trends tab (pushed alongside the
+    # corpus so the Space pulls a consistent snapshot).
+    data_dir = DEFAULT_DB.parent
+    for fname in ("analytics.json", "translational_motion.json"):
+        fp = data_dir / fname
+        if fp.exists():
+            api.upload_file(path_or_fileobj=str(fp), path_in_repo=fname,
+                            repo_id=repo, repo_type="dataset")
+    logger.info("Synced corpus + trend caches to HF Dataset %s", repo)
     return True
 
 
