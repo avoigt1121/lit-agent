@@ -10,14 +10,17 @@ Roadmap (CLAUDE.md "Post-v1 roadmap"): grow into one tab per focus area.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import date, timedelta
 from pathlib import Path
 
 import gradio as gr
+import yaml
 from dotenv import load_dotenv
 
+from pipeline import analytics, clinicaltrials
 from pipeline.digest import provenance_sentence
 from qa import answer as qa_answer
 from qa.retrieve import Retriever
@@ -147,6 +150,50 @@ class LitAgentUI:
         return qa_answer.answer(question, passages, self._client)
 
     # ------------------------------------------------------------------
+    # Trends tab — the FULL keyword-trend + new-trials lists the weekly email
+    # links to ("See all on the site →"). Renders read-only from the offline
+    # caches the pipeline produced (data/analytics.json, data/translational_
+    # motion.json); the Space never recomputes them.
+    def _load_profile(self) -> dict:
+        try:
+            return yaml.safe_load((ROOT / "config" / "interest_profile.yaml").read_text()) or {}
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def _pdac_query(self) -> str:
+        try:
+            cfg = yaml.safe_load((ROOT / "config" / "sources.yaml").read_text()) or {}
+            return (cfg.get("europepmc", {}) or {}).get("query", "") or ""
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def _trends_html(self) -> str:
+        profile = self._load_profile()
+        parts = ['<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111;">']
+
+        # What's heating up — full keyword-trend table
+        parts.append('<h3 style="margin:6px 0 2px;">What\'s heating up</h3>')
+        try:
+            adata = json.loads((ROOT / "data" / "analytics.json").read_text())
+            movers = adata.get("keyword_movers", {})
+            parts.append(analytics.movers_full_html(movers, profile, pdac_query=self._pdac_query()))
+        except Exception as exc:  # noqa: BLE001
+            parts.append(f'<p style="color:#6b7280;">Keyword-trend data not available yet ({exc}).</p>')
+
+        # Translational motion — full new-trials list
+        parts.append('<h3 style="margin:20px 0 2px;">Translational motion '
+                     '<span style="font-weight:400;color:#6b7280;font-size:13px;">'
+                     '(new PDAC trial registrations)</span></h3>')
+        try:
+            summary = json.loads((ROOT / "data" / "translational_motion.json").read_text())
+            parts.append(clinicaltrials.translational_motion_full_html(summary))
+        except Exception as exc:  # noqa: BLE001
+            parts.append(f'<p style="color:#6b7280;">Trial data not available yet ({exc}).</p>')
+
+        parts.append('</div>')
+        return "\n".join(parts)
+
+    # ------------------------------------------------------------------
     def build(self) -> gr.Blocks:
         with gr.Blocks(title="BCC PDAC Literature Q&A") as demo:
             gr.Markdown(
@@ -156,18 +203,26 @@ class LitAgentUI:
                 "abstract, the agent says the full text isn't available rather than infer it."
             )
             gr.Markdown(f"<small>{provenance_sentence()}</small>")
-            chatbot = gr.Chatbot(label="Conversation", height=480, type="messages", show_label=False)
-            with gr.Accordion("Sources (what grounded the answer)", open=False):
-                sources_panel = gr.Markdown("_Ask a question to see the cited passages._")
-            with gr.Row():
-                msg = gr.Textbox(placeholder="Ask about the recent PDAC literature…",
-                                 scale=8, show_label=False, container=False)
-                send = gr.Button("Send", variant="primary", scale=1)
-            since = gr.Number(value=0, precision=0,
-                              label="Restrict to papers first seen in the last N days (0 = all)")
-            gr.Examples(examples=EXAMPLES, inputs=msg, label="Example questions")
-            gr.Markdown("_Read-only Q&A over the offline-ingested corpus · answers grounded in "
-                        "retrieved abstracts with DOI citations · no ingestion happens here._")
+
+            with gr.Tabs():
+                with gr.Tab("Q&A"):
+                    chatbot = gr.Chatbot(label="Conversation", height=480, type="messages", show_label=False)
+                    with gr.Accordion("Sources (what grounded the answer)", open=False):
+                        sources_panel = gr.Markdown("_Ask a question to see the cited passages._")
+                    with gr.Row():
+                        msg = gr.Textbox(placeholder="Ask about the recent PDAC literature…",
+                                         scale=8, show_label=False, container=False)
+                        send = gr.Button("Send", variant="primary", scale=1)
+                    since = gr.Number(value=0, precision=0,
+                                      label="Restrict to papers first seen in the last N days (0 = all)")
+                    gr.Examples(examples=EXAMPLES, inputs=msg, label="Example questions")
+                    gr.Markdown("_Read-only Q&A over the offline-ingested corpus · answers grounded in "
+                                "retrieved abstracts with DOI citations · no ingestion happens here._")
+
+                with gr.Tab("Trends & Translational Motion"):
+                    gr.Markdown("Full keyword-trend and new-trial lists behind the weekly digest's "
+                                "summaries — read-only, from the latest offline pipeline run.")
+                    gr.HTML(self._trends_html())
 
             inputs = [msg, chatbot, since]
             outputs = [chatbot, msg, sources_panel]

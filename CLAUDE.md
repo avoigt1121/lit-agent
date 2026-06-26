@@ -294,3 +294,26 @@ coupled (0002 runs inside 0001's Job). Per-action-item status lives in each ADR 
   hook for the post-v1 **cross-pollination with OHSU areas of interest** (a later
   prompt extension, not a structural change). Falls back to the static
   `audience_note` with no LLM key.
+
+### Decisions resolved (2026-06-26) — full trend lists hosted on the Space
+
+Follow-up to 2026-06-25: the lead likes BOTH trend blocks ("What's heating up" +
+"Translational motion") but they were truncated (movers top 8, trials top 6) with
+no "see all". Resolution = host the FULL lists on the Space + link from the email.
+
+- **New Space tab "Trends & Translational Motion"** (`ui.py`): renders the full
+  keyword-trend table (`analytics.movers_full_html`) and the full new-trials list
+  (`clinicaltrials.translational_motion_full_html`) read-only from the offline
+  caches (`data/analytics.json`, `data/translational_motion.json`) — the Space
+  still never recomputes/ingests. Q&A moved under a sibling tab.
+- **Caches now carry the full lists:** `run_weekly.make_digest` caches movers at
+  `top_n=50` (all tracked terms per area; email re-caps to its top slice);
+  `clinicaltrials.translational_motion` adds an `all` key (full compact list)
+  alongside the email's `top`.
+- **`SPACE_URL` (config, not code, env/.env):** when set, the email's two trend
+  blocks append a "See all … on the site →" link to the Space tab; omitted
+  gracefully when unset (local dry-runs show no dead link). The trials block keeps
+  its existing ClinicalTrials.gov deep link regardless.
+- **Remaining to go live end-to-end:** the lit-agent Space isn't deployed yet (no
+  HF Space remote — standalone repo, Phase 5). Deploy it, then set `SPACE_URL` in
+  the Space + the pipeline env so the email links resolve.

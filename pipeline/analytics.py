@@ -246,16 +246,19 @@ def keyword_movers(conn, profile: dict, top_n: int = 3) -> dict:
 
 
 def keyword_movers_html(movers: dict, profile: dict, pdac_query: str | None = None,
-                        today: date | None = None, top_n: int = 8) -> str:
+                        today: date | None = None, top_n: int = 8,
+                        see_all_url: str | None = None) -> str:
     """Concept B — 'what's heating up': the fastest-rising specific terms across
     all areas, as a ranked bar strip. Each term links to the Europe PMC papers
-    behind the count (when the PDAC query is supplied)."""
+    behind the count (when the PDAC query is supplied). When more movers exist
+    than `top_n` and `see_all_url` is given, a "See all" link is appended."""
     name = {a["id"]: a["name"] for a in profile.get("focus_areas", [])}
     flat = [(aid, m) for aid, ms in (movers or {}).items() for m in ms
             if m.get("pct") is not None]
     if not flat:
         return ""
     flat.sort(key=lambda t: t[1]["pct"], reverse=True)
+    n_all = len(flat)
     flat = flat[:top_n]
     maxpct = max(m["pct"] for _, m in flat) or 1
     today = today or date.today()
@@ -277,13 +280,65 @@ def keyword_movers_html(movers: dict, profile: dict, pdac_query: str | None = No
             'font-size:0;line-height:0;">&nbsp;</div></div></td>'
             f'<td style="padding:4px 0 4px 10px;text-align:right;font-size:13px;font-weight:600;'
             f'color:#b45309;white-space:nowrap;">+{m["pct"]}%</td></tr>')
+    see_all = ""
+    if see_all_url and n_all > len(flat):
+        see_all = (f'<div style="font-size:12px;margin-top:6px;">'
+                   f'<a href="{see_all_url}" style="color:#1d4ed8;text-decoration:none;font-weight:600;">'
+                   f'See all {n_all} rising terms on the site →</a></div>')
     return (
         '<div style="margin:16px 0;">'
         '<div style="font-size:13px;font-weight:600;margin-bottom:4px;">What\'s heating up '
         '<span style="font-weight:400;color:#6b7280;">(fastest-rising terms · last 12 mo vs '
         'prior 12 mo' + (' · click a term for the papers' if pdac_query else '') + ')</span></div>'
         '<table style="border-collapse:collapse;width:100%;max-width:520px;">'
-        + "".join(rows) + '</table></div>')
+        + "".join(rows) + '</table>' + see_all + '</div>')
+
+
+def movers_full_html(movers: dict, profile: dict, pdac_query: str | None = None,
+                     today: date | None = None) -> str:
+    """The FULL keyword-trend table for the Space 'Trends' tab — every tracked
+    term across all areas (not just the email's top slice), with its 12-mo count,
+    prior-year baseline, and % change. Terms below the trust floor show '—' for %
+    (still listed). Renders from the cached movers dict (no DB read)."""
+    name = {a["id"]: a["name"] for a in profile.get("focus_areas", [])}
+    flat = [(aid, m) for aid, ms in (movers or {}).items() for m in ms]
+    if not flat:
+        return "<p style='color:#6b7280;'>No keyword-trend data yet.</p>"
+    # Sort: real movers (pct set) by % desc first, then the rest by current count.
+    flat.sort(key=lambda t: (t[1].get("pct") is not None, t[1].get("pct") or 0,
+                             t[1].get("cur") or 0), reverse=True)
+    today = today or date.today()
+    start, end = (today - timedelta(days=365)).isoformat(), today.isoformat()
+
+    rows = []
+    for aid, m in flat:
+        kw = m["keyword"]
+        label = (f'<a href="{_epmc_link(pdac_query, kw, start, end)}" '
+                 f'style="color:#1d4ed8;text-decoration:none;">{kw}</a>' if pdac_query else kw)
+        pct = m.get("pct")
+        pct_html = (f'<span style="color:{"#059669" if pct >= 0 else "#dc2626"};font-weight:600;">'
+                    f'{"+" if pct >= 0 else ""}{pct}%</span>' if pct is not None
+                    else '<span style="color:#9ca3af;">—</span>')
+        rows.append(
+            '<tr>'
+            f'<td style="padding:4px 12px 4px 0;font-size:13px;">{label}</td>'
+            f'<td style="padding:4px 12px;font-size:12px;color:#6b7280;">{name.get(aid, aid)}</td>'
+            f'<td style="padding:4px 12px;text-align:right;font-size:13px;">{m.get("cur", 0)}</td>'
+            f'<td style="padding:4px 12px;text-align:right;font-size:13px;color:#6b7280;">'
+            f'{m.get("prior") if m.get("prior") is not None else "—"}</td>'
+            f'<td style="padding:4px 0;text-align:right;font-size:13px;">{pct_html}</td></tr>')
+    return (
+        '<div style="margin:8px 0;">'
+        '<table style="border-collapse:collapse;width:100%;max-width:640px;">'
+        '<tr style="color:#6b7280;font-size:12px;text-align:left;">'
+        '<th style="padding:2px 12px 2px 0;">Term</th><th style="padding:2px 12px;">Area</th>'
+        '<th style="padding:2px 12px;text-align:right;">Last 12 mo</th>'
+        '<th style="padding:2px 12px;text-align:right;">Prior 12 mo</th>'
+        '<th style="padding:2px 0;text-align:right;">Change</th></tr>'
+        + "".join(rows) + '</table>'
+        '<div style="font-size:11px;color:#9ca3af;margin-top:6px;">% change shown only when the '
+        f'prior-year baseline ≥ {MOVER_MIN_PRIOR} papers (smaller baselines are too noisy to trust); '
+        'those rows show "—". Counts are Europe PMC keyword matches.</div></div>')
 
 
 def _epmc_link(pdac_query: str, term: str, start: str, end: str) -> str:

@@ -141,17 +141,24 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
                   and (not w_to or fsd <= w_to)]
     profile = load_interest_profile(PROFILE_PATH)
     adata = analytics.compute_trends(conn)
-    movers = analytics.keyword_movers(conn, profile)
+    # Cache the FULL per-area movers (top_n large) so the Space 'Trends' tab can
+    # render every tracked term; the email re-caps to its top slice below.
+    movers = analytics.keyword_movers(conn, profile, top_n=50)
     conn.close()
     analytics.cache({**adata, "keyword_movers": movers}, ROOT / "data" / "analytics.json")
     pdac_query = load_config().get("europepmc", {}).get("query", "")
+    # SPACE_URL (config, not code): when set, the email's two trend blocks link to
+    # the Space's "Trends & Translational Motion" tab for the full lists. Omitted
+    # gracefully when unset (e.g. local dry-runs) so no dead link renders.
+    space_url = os.environ.get("SPACE_URL") or None
     # Share-of-voice leaderboard (analytics.footer_html) intentionally NOT rendered
     # in the email: it measured raw Europe PMC keyword-match VOLUME, not the curated
     # digest, and read as a precision claim it couldn't back. The series is still
     # computed + cached (analytics.json) for the Space. The keyword movers stay —
     # each links out to the actual Europe PMC papers, so it's verifiable.
-    footer = (analytics.keyword_movers_html(movers, profile, pdac_query=pdac_query)
-              + clinicaltrials.motion_html_from_cache())  # Phase F: cached offline; "" if absent
+    footer = (analytics.keyword_movers_html(movers, profile, pdac_query=pdac_query,
+                                            see_all_url=space_url)
+              + clinicaltrials.motion_html_from_cache(see_all_url=space_url))  # Phase F: cached offline
     html_str = build_digest_html(papers, profile, window, client=client,
                                  analytics_html=footer, mode=mode)
     path = write_dry_run(html_str, out_dir=ROOT / "out", date_str=window.get("to"))

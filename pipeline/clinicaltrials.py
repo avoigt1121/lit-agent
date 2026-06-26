@@ -294,6 +294,20 @@ def translational_motion(payload: dict, top_n: int = 6) -> dict:
         "is_early_phase": t.get("is_early_phase", False),
     } for t in ranked[:top_n]]
 
+    # The FULL ranked list (compact) so the Space can show every new trial; the
+    # email renders only `top`. Same field set as `top`.
+    all_compact = [{
+        "nct_id": t.get("nct_id"),
+        "title": t.get("title"),
+        "phase": t.get("phase"),
+        "overall_status": t.get("overall_status"),
+        "sponsor": t.get("sponsor"),
+        "url": t.get("url"),
+        "first_posted_date": t.get("first_posted_date"),
+        "is_first_in_human": t.get("is_first_in_human", False),
+        "is_early_phase": t.get("is_early_phase", False),
+    } for t in ranked]
+
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "window": window,
@@ -302,6 +316,7 @@ def translational_motion(payload: dict, top_n: int = 6) -> dict:
         "n_first_in_human": sum(1 for t in trials if t.get("is_first_in_human")),
         "search_url": _search_url(query_cond),
         "top": top,
+        "all": all_compact,
     }
 
 
@@ -318,10 +333,11 @@ def _status_label(status: str | None) -> str:
     return status.replace("_", " ").capitalize() if status else ""
 
 
-def translational_motion_html(summary: dict | None) -> str:
+def translational_motion_html(summary: dict | None, see_all_url: str | None = None) -> str:
     """Email-safe "Translational motion" section: a count + deep-linked trials.
 
-    Returns "" when there are no new trials (mirrors keyword_movers_html)."""
+    Shows only `top`; when more trials exist and `see_all_url` is given, appends a
+    "See all on the site" link. Returns "" when there are no new trials."""
     if not summary or not summary.get("n_total"):
         return ""
     n = summary["n_total"]
@@ -357,6 +373,11 @@ def translational_motion_html(summary: dict | None) -> str:
     count_link = (f'<a href="{_esc(summary.get("search_url"))}" '
                   f'style="color:#0f766e;text-decoration:none;font-weight:600;">'
                   f'{n} new trial{"s" if n != 1 else ""}</a>')
+    see_all = ""
+    if see_all_url and n > len(summary.get("top", [])):
+        see_all = (f'<div style="font-size:12px;margin-top:6px;">'
+                   f'<a href="{_esc(see_all_url)}" style="color:#1d4ed8;text-decoration:none;'
+                   f'font-weight:600;">See all {n} new trials on the site →</a></div>')
     return (
         '<div style="margin:16px 0;">'
         '<div style="font-size:13px;font-weight:600;margin-bottom:2px;">Translational motion '
@@ -365,6 +386,43 @@ def translational_motion_html(summary: dict | None) -> str:
         f'<div style="font-size:12px;color:#374151;margin-bottom:6px;">{count_link} '
         f'registered{extras_txt}.</div>'
         '<table style="border-collapse:collapse;width:100%;max-width:560px;">'
+        + "".join(rows) + '</table>' + see_all + '</div>')
+
+
+def translational_motion_full_html(summary: dict | None) -> str:
+    """The FULL trials list for the Space 'Trends' tab — every new trial (from the
+    cached `all` list), deep-linked, with phase/status/sponsor + posted date."""
+    if not summary or not summary.get("n_total"):
+        return "<p style='color:#6b7280;'>No new PDAC trial registrations in the latest window.</p>"
+    trials = summary.get("all") or summary.get("top") or []
+    win = summary.get("window", {})
+    window_txt = f'{win.get("from", "?")} → {win.get("to", "?")}'
+    n = summary["n_total"]
+
+    rows = []
+    for t in trials:
+        title = _esc((t.get("title") or "(untitled)")[:200])
+        url = t.get("url")
+        title_html = (f'<a href="{_esc(url)}" style="color:#1d4ed8;text-decoration:none;">{title}</a>'
+                      if url else title)
+        badges = ""
+        if t.get("is_first_in_human"):
+            badges += _badge("first-in-human", "#0f766e", "#ccfbf1")
+        elif t.get("is_early_phase"):
+            badges += _badge("early phase", "#9a3412", "#ffedd5")
+        meta = " · ".join(x for x in [_esc(t.get("phase")), _esc(_status_label(t.get("overall_status"))),
+                                      _esc(t.get("sponsor")), _esc(t.get("first_posted_date"))] if x)
+        rows.append(
+            '<tr><td style="padding:6px 0;border-bottom:1px solid #f3f4f6;">'
+            f'<div style="font-size:14px;line-height:1.35;">{title_html}{badges}</div>'
+            f'<div style="font-size:12px;color:#6b7280;margin-top:2px;">{meta}</div></td></tr>')
+    return (
+        '<div style="margin:8px 0;">'
+        f'<div style="font-size:13px;color:#374151;margin-bottom:6px;">{n} new PDAC trial'
+        f'{"s" if n != 1 else ""} first-posted · {_esc(window_txt)} · '
+        f'<a href="{_esc(summary.get("search_url"))}" style="color:#0f766e;">all on ClinicalTrials.gov →</a>'
+        '</div>'
+        '<table style="border-collapse:collapse;width:100%;max-width:720px;">'
         + "".join(rows) + '</table></div>')
 
 
@@ -381,16 +439,18 @@ def cache_motion(payload: dict, path: str | Path = MOTION_CACHE, top_n: int = 6)
     return path
 
 
-def motion_html_from_cache(path: str | Path = MOTION_CACHE) -> str:
+def motion_html_from_cache(path: str | Path = MOTION_CACHE,
+                           see_all_url: str | None = None) -> str:
     """Render the motion section from the cached summary; "" if absent/empty.
 
     The digest hook calls this so make_digest stays offline (cache-only, no
-    network), exactly like it reads data/analytics.json."""
+    network), exactly like it reads data/analytics.json. `see_all_url` (the Space)
+    is forwarded so the email can link to the full list."""
     path = Path(path)
     if not path.exists():
         return ""
     try:
-        return translational_motion_html(json.loads(path.read_text()))
+        return translational_motion_html(json.loads(path.read_text()), see_all_url=see_all_url)
     except Exception as exc:  # noqa: BLE001 — a bad cache must not break the digest
         logger.warning("translational-motion cache unreadable (%s)", exc)
         return ""
