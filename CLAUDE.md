@@ -177,11 +177,51 @@ Build v1 so this is a later config/UI change, not a rewrite:
 - The classifier is **multi-label** already, so growing the area count is fine —
   watch per-area precision (§9.3), not plumbing.
 
+### Research to-do backlog (from PI list, 2026-06-26)
+
+Forward-looking feature requests pulled from the PI's research to-do list. Design
+toward these; don't build yet.
+
+- **Identify more specific OHSU research targets** tied to the newly ingested
+  papers (link papers → BCC/OHSU lab interests).
+- **Infer correlations between OHSU research and the papers** (relate each new
+  paper to active OHSU work).
+- **Citation tracking** — surface anything that cites the BCC's own paper(s)
+  (seed: PubMed 39636224).
+- **Cross-field correlation alert** — flag correlations that span fields (e.g., a
+  PDAC finding relating to the nervous system). Overlaps ADR-0003 (paper↔paper
+  relationship layer).
+- *Already done (2026-06-25):* "RNA-binding proteins" is now a focus area
+  (`hur_elavl1` broadened to "RNA-binding proteins & mRNA regulation").
+
 ## Decisions still open (ask before assuming)
 
 - OHSU TDM/API access (OA-only vs near-comprehensive Q&A)
 - The actual BCC focus areas + exemplar DOIs to seed `config/interest_profile.yaml`
-- Email provider + sender domain (SPF/DKIM)
+
+### Decisions resolved (2026-06-26) — EMAIL IS NOW LIVE + ADR-0001 cutover complete
+
+- **Email provider/sender RESOLVED + live send ENABLED.** Provider = Resend,
+  sender `BCC PDAC Digest <digest@send.anne-voigt.com>`. `config/recipients.yaml`
+  is no longer empty — the real 4-person list is in: anne@anne-voigt.com,
+  searsr@ohsu.edu, pelzc@ohsu.edu, brodyj@ohsu.edu (display names for the OHSU 3
+  are best-guess from the handles except Sears — confirm/refine). `SEND_LIVE=1`
+  added to the pipeline `.env` (gitignored). A verification live send (mode=`live`,
+  no banner) to anne@anne-voigt.com confirmed the clean email; the group has NOT
+  been emailed yet — first real send is the Monday cron.
+- **Misleading recall % pulled from the email.** `digest.provenance_sentence()`
+  now always states sources qualitatively; the self-measured ~76% recall figure is
+  gone (it read as a completeness guarantee it can't back — union denominator +
+  precision-tuned query). The `provenance:` block in `config/sources.yaml` stays
+  (auto-written by `coverage_check.py`) but is marked INTERNAL-ONLY, never surfaced.
+- **ADR-0001 cutover COMPLETE.** Re-registered the weekly HF scheduled job so it
+  carries `SEND_LIVE=1` + `SPACE_URL` (the old id 6a3d720b… lacked both; **new id
+  `6a3f1f02…`**, same `0 13 * * 1`, first live run **Mon 2026-06-29 13:00 UTC**).
+  Old schedule deleted. `.github/workflows/weekly.yml` `schedule:` block RETIRED
+  (kept `workflow_dispatch` as manual fallback) to avoid a double Monday run
+  (corpus-push race + duplicate live email). Note: re-registering a schedule
+  re-captures secrets at submit time via the Python API (`create_scheduled_job`),
+  since the `hf` CLI errors (ioctl) in non-interactive shells.
 
 ### Decisions resolved (2026-06-17)
 
