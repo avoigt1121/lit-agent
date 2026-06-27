@@ -10,7 +10,16 @@
 # each person's email to their subscribed areas without a schema change. Values
 # are focus-area `id`s from interest_profile.yaml.
 
-recipients: []
+recipients:
+  - name: Anne Voigt
+    email: anne@anne-voigt.com
+  - name: Rosalie Sears
+    email: searsr@ohsu.edu
+  - name: C. Pelz
+    email: pelzc@ohsu.edu
+  - name: J. Brody
+    email: brodyj@ohsu.edu
+  # focus_areas omitted on all ⇒ everyone gets the full digest (v1)
 # Example:
 # recipients:
 #   - name: Jane Researcher

@@ -163,16 +163,15 @@ def load_provenance(sources_path: str | Path = "config/sources.yaml") -> dict:
 
 def provenance_sentence(prov: dict | None = None,
                         sources_path: str | Path = "config/sources.yaml") -> str:
-    """One honest data-source line. Uses the self-measured recall when present,
-    else the qualitative version. NEVER hardcodes the ~98% figure (§3.5)."""
-    prov = load_provenance(sources_path) if prov is None else prov
-    rec = prov.get("measured_recall")
-    if rec:
-        asof = prov.get("as_of", "")
-        return (f"Coverage: our saved PDAC query recovers ~{round(rec * 100)}% of papers found by an "
-                f"OpenAlex cross-check (self-measured {asof}; a conservative lower bound). Europe PMC "
-                "is the primary source — it mirrors PubMed/MEDLINE plus bioRxiv/medRxiv preprints. "
-                "Open-access full text where available; abstracts otherwise.")
+    """One honest, qualitative data-source line.
+
+    Deliberately states no recall percentage: a single self-measured number
+    (e.g. ~76% against an OpenAlex cross-check) reads to recipients as a
+    precision/completeness guarantee it can't back — the denominator is the
+    EPMC+OpenAlex DOI union and the query is precision-tuned, so the figure is a
+    conservative lower bound, not "papers you're missing". We describe the
+    sources instead. (`prov`/`sources_path` retained for call-site compatibility;
+    the measured_recall block in config is no longer rendered.)"""
     return ("Sources: Europe PMC (primary; mirrors PubMed/MEDLINE + bioRxiv/medRxiv preprints), with "
             "PubMed and bioRxiv/medRxiv as secondary feeds. Open-access full text where available; "
             "abstracts otherwise.")

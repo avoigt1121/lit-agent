@@ -115,9 +115,13 @@ openalex:
 
 # >>> provenance: measured coverage — auto-written by scripts/coverage_check.py >>>
 # Do NOT hand-edit; re-run `python scripts/coverage_check.py` to refresh.
-# measured_recall is THIS system's self-measured number — never hardcode the
-# ~98% figure (a study of OpenAlex vs guideline-cited papers, not this query;
-# see CAPABILITIES.md §3.5).
+# INTERNAL DIAGNOSTIC ONLY — as of 2026-06-26 this block is NO LONGER rendered in
+# the digest email. A single recall % (measured against the EPMC+OpenAlex DOI
+# union, with a precision-tuned query) read to recipients as a completeness
+# guarantee it can't back, so digest.provenance_sentence() now states sources
+# qualitatively instead. Keep these numbers for internal coverage tracking; do
+# NOT surface measured_recall to users. Never hardcode the ~98% figure either
+# (a study of OpenAlex vs guideline-cited papers, not this query; CAPABILITIES.md §3.5).
 provenance:
   measured_recall: 0.7604
   denominator: fraction of the EPMC + OpenAlex DOI union returned by EPMC
