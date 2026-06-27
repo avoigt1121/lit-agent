@@ -9,8 +9,11 @@ name: weekly-digest
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: "0 13 * * 1"   # Mondays 13:00 UTC
+  # schedule: RETIRED 2026-06-26 — the weekly cron now runs on HF Jobs (ADR-0001;
+  # scheduled-job id 6a3f1f02…, same "0 13 * * 1"). The Actions cron was removed to
+  # avoid a double run (corpus-push race + potential duplicate live email now that
+  # SEND_LIVE is enabled). workflow_dispatch is kept as the manual/fallback runner.
+  #   - cron: "0 13 * * 1"   # Mondays 13:00 UTC
 
 jobs:
   run:
