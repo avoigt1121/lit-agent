@@ -11,14 +11,13 @@
 # are focus-area `id`s from interest_profile.yaml.
 
 recipients:
-  - name: Anne Voigt
-    email: anne@anne-voigt.com
-  - name: Rosalie Sears
-    email: searsr@ohsu.edu
-  - name: C. Pelz
-    email: pelzc@ohsu.edu
-  - name: J. Brody
-    email: brodyj@ohsu.edu
+  # name is an optional config-only label — it is NOT rendered in the email
+  # (the digest is generic; deliver() addresses by email only). Left blank by
+  # request so no per-recipient personalization appears.
+  - email: anne@anne-voigt.com
+  - email: searsr@ohsu.edu
+  - email: pelzc@ohsu.edu
+  - email: brodyj@ohsu.edu
   # focus_areas omitted on all ⇒ everyone gets the full digest (v1)
 # Example:
 # recipients:
