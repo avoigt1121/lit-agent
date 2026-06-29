@@ -20,4 +20,8 @@ except Exception as exc:  # noqa: BLE001 — fall back to whatever corpus is on 
 from ui import LitAgentUI  # noqa: E402 — after the optional pull
 
 if __name__ == "__main__":
-    LitAgentUI().build().launch(server_name="0.0.0.0", server_port=7860)
+    # ssr_mode=False: Gradio 5.x auto-enables experimental SSR on Spaces, and in
+    # 5.50 it leaves the chat Textbox value stale on the client — a second submit
+    # re-sends the FIRST query, so every follow-up question returns the same
+    # answer. The stable client-rendered path updates the textbox correctly.
+    LitAgentUI().build().launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
