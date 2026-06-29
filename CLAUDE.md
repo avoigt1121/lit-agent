@@ -409,3 +409,10 @@ deterministic meta-intent router that runs BEFORE retrieval.
   or a listing verb (show/list/latest/newest/what's-new) does. Respects corpus
   invariants (`excluded=0`, "new" = `first_seen_date`); points users to the
   Trends tab for keyword movers. Verified against the live 44.6k corpus.
+- **Gotcha (fixed):** `answer_meta` must open its OWN short-lived SQLite
+  connection from `retriever.db_path`, not reuse `retriever.conn`. The retriever's
+  connection is created at app startup; Gradio runs each request in a worker
+  thread, and SQLite forbids cross-thread connection use — so the first version
+  raised `ProgrammingError` on every meta question. (Topical retrieval never hit
+  it: it reads an in-memory dict + the vector index, not the DB.) `ui.py` also
+  wraps the call so a meta failure degrades to retrieval instead of crashing.
