@@ -186,8 +186,11 @@ toward these; don't build yet.
   papers (link papers → BCC/OHSU lab interests).
 - **Infer correlations between OHSU research and the papers** (relate each new
   paper to active OHSU work).
-- **Citation tracking** — surface anything that cites the BCC's own paper(s)
-  (seed: PubMed 39636224).
+- **Citation tracking** — surface anything that cites the BCC's key reference
+  paper(s) (seed: PubMed 39636224 — the Loveless et al. PDAC single-cell atlas).
+  NOTE: this seed is a **Steele-lab** paper (Loveless/…/Steele NG), NOT
+  Sears/BCC-authored. It is a tracked reference of interest, not a BCC-owned
+  paper — do not describe it as "our"/"the BCC's own" paper.
 - **Cross-field correlation alert** — flag correlations that span fields (e.g., a
   PDAC finding relating to the nervous system). Overlaps ADR-0003 (paper↔paper
   relationship layer).
@@ -416,3 +419,12 @@ deterministic meta-intent router that runs BEFORE retrieval.
   raised `ProgrammingError` on every meta question. (Topical retrieval never hit
   it: it reads an in-memory dict + the vector index, not the DB.) `ui.py` also
   wraps the call so a meta failure degrades to retrieval instead of crashing.
+- **Gotcha (fixed) — `launch(ssr_mode=False)` in `app.py`:** Gradio 5.50
+  auto-enables experimental SSR on Spaces; it left the chat Textbox value stale
+  on the client, so a second submit re-sent the FIRST question — every follow-up
+  returned the same answer regardless of input. Server routing was correct on all
+  paths (verified the live `/ask` AND `_respond` endpoints return distinct
+  answers); the bug was purely the SSR client. Disabling SSR restores the stable
+  client-rendered path. Debug lever: drive the Space's real fns over raw HTTP —
+  `GET /config` lists `dependencies[].api_name` (e.g. `_respond`), then
+  `POST /gradio_api/call/<api_name>` + stream the result.
