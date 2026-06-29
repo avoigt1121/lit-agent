@@ -23,15 +23,18 @@ from dotenv import load_dotenv
 from pipeline import analytics, clinicaltrials
 from pipeline.digest import provenance_sentence
 from qa import answer as qa_answer
+from qa import corpus_qa
 from qa.retrieve import Retriever
 
 logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent
 
 EXAMPLES = [
+    "What are the new papers this week?",
     "What's new on KRAS G12D inhibitor resistance?",
     "Summarize recent CAF / stroma findings in PDAC.",
-    "What MYC-related mechanisms were reported recently?",
+    "How many papers do you have, and what topics are covered?",
+    "New immunotherapy papers this month",
     "Any new early-detection or liquid-biopsy biomarker studies?",
 ]
 
@@ -42,8 +45,9 @@ EXAMPLES = [
 ORIENTATION = (
     "I answer questions grounded in the ingested **PDAC literature corpus** — "
     "every claim cited by DOI, strictly from retrieved abstracts. I couldn't find "
-    "papers matching that, which usually means it was a general/meta question "
-    "rather than a literature search. Try a topical PDAC question, e.g.:\n\n"
+    "papers matching that. I can answer **topical deep-dives**, **what's-new "
+    "listings** (\"new papers this week\"), and **corpus questions** (\"how many "
+    "papers?\", \"what topics are covered?\"). Try, e.g.:\n\n"
     + "\n".join(f"- {q}" for q in EXAMPLES)
 )
 
@@ -54,6 +58,7 @@ class LitAgentUI:
         self._retriever = None
         self._client = None
         self._init_error = None
+        self._profile = self._load_profile()  # focus-area names for meta answers
         try:
             self._retriever = Retriever()
         except Exception as exc:  # noqa: BLE001 — surface a clear message in the UI
@@ -94,6 +99,18 @@ class LitAgentUI:
         if self._retriever is None:
             history[-1]["content"] = f"⚠️ {self._init_error or 'Corpus unavailable.'}"
             yield history, "", "_No corpus loaded._"
+            return
+
+        # Corpus / meta questions ("what are the new papers this week?", "how many
+        # papers?", "what topics are covered?", "what can you do?") have no single
+        # semantic match, so the vector retriever would drop them below the
+        # similarity floor and return the generic orientation. Answer those
+        # deterministically from SQLite first; topical questions fall through to
+        # grounded synthesis below.
+        meta = corpus_qa.answer_meta(message, self._retriever, self._profile)
+        if meta is not None:
+            history[-1]["content"] = meta
+            yield history, "", "_Answered from the corpus index (no passage retrieval needed)._"
             return
 
         since = None
@@ -142,6 +159,9 @@ class LitAgentUI:
             return self._init_error or "Corpus unavailable."
         if not question or not question.strip():
             return "Please provide a question."
+        meta = corpus_qa.answer_meta(question, self._retriever, self._profile)
+        if meta is not None:
+            return meta
         passages = self._retriever.retrieve(question, k=6)
         if not passages:
             return ORIENTATION

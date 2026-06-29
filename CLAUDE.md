@@ -368,3 +368,27 @@ no "see all". Resolution = host the FULL lists on the Space + link from the emai
   **Gotcha:** the Space first showed `CONFIG_ERROR` "Collision on variables and
   secrets names" — a name set as BOTH a Space variable and a secret. Fix = pick
   one (deleted the `CORPUS_HF_DATASET` secret, kept the variable) and factory-reboot.
+
+### Decisions resolved (2026-06-29) — Q&A handles corpus/meta questions, not just topical
+
+The Space chat only did semantic vector retrieval, so non-topical questions
+("What are the new papers this week?", "how many papers?", "what topics are
+covered?", "what can you do?") had no single matching abstract, fell below the
+`RETRIEVAL_MIN_SCORE` floor, and hit the generic orientation message. Fixed by a
+deterministic meta-intent router that runs BEFORE retrieval.
+
+- **New module `qa/corpus_qa.py`** — rule-based, key-free `answer_meta()` answers
+  four intents straight from SQLite (real rows, real DOIs — still grounded, no
+  fabrication): `list_recent` (`first_seen_date` window, optional focus-area
+  scope), `corpus_size` (`COUNT(excluded=0)` + 7/30-day deltas), `topic_breakdown`
+  (`topic_tags` by area), `help`. Anything unmatched returns `None` → falls
+  through to the existing grounded synthesis (the topical deep-dive path,
+  unchanged).
+- **Wired into `ui.py`** — both `_respond` (streaming chat) and `ask` (the
+  `/ask` agent API) short-circuit to `answer_meta()` first; example questions +
+  fall-through orientation updated to advertise the new abilities.
+- **Disambiguation rule:** a bare "new" never triggers a listing ("any new
+  liquid-biopsy *studies*?" is topical → retrieval); only an explicit time window
+  or a listing verb (show/list/latest/newest/what's-new) does. Respects corpus
+  invariants (`excluded=0`, "new" = `first_seen_date`); points users to the
+  Trends tab for keyword movers. Verified against the live 44.6k corpus.
