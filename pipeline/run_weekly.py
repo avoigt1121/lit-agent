@@ -185,6 +185,24 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
     return path, html_str
 
 
+def _relationship_step(db_path: Path) -> None:
+    """Populate the ADR-0004 relationship data layer for this run's new papers.
+
+    Each sub-layer is isolated so one failing (e.g. an EPMC citation hiccup) does
+    not block the others or the run. Order matters: mentions → citations → derived
+    relations (which read mentions + citations) → ohsu map.
+    """
+    from pipeline import mentions, citations, relationships, ohsu_map
+    for name, fn in (("mentions", lambda: mentions.index_mentions(db_path)),
+                     ("citations", lambda: citations.run(db_path)),
+                     ("relations", lambda: relationships.derive_relations(db_path)),
+                     ("ohsu_map", lambda: ohsu_map.map_interests(db_path))):
+        try:
+            logger.info("relationship layer [%s]: %s", name, fn())
+        except Exception as exc:  # noqa: BLE001 — never abort the run on a relationship hiccup
+            logger.warning("relationship layer [%s] skipped: %s", name, exc)
+
+
 def _latest_window(db_path: Path) -> dict:
     conn = db.connect(db_path)
     row = conn.execute("SELECT window_from, window_to FROM runs ORDER BY id DESC LIMIT 1").fetchone()
@@ -298,6 +316,8 @@ def main() -> None:
     ap.add_argument("--no-coverage", action="store_true", help="Skip refreshing the coverage trend series.")
     ap.add_argument("--no-trials", action="store_true",
                     help="Skip the ClinicalTrials.gov translational-motion fetch (Phase F).")
+    ap.add_argument("--no-relationships", action="store_true",
+                    help="Skip the ADR-0004 relationship data layer (mentions/citations/relations/ohsu).")
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--index", type=Path, default=DEFAULT_INDEX)
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -364,6 +384,15 @@ def main() -> None:
             logger.info("translational motion: %d new trial registration(s)", trials_payload["count"])
         except Exception as exc:  # noqa: BLE001 — don't fail the run on a trials hiccup
             logger.warning("translational-motion update skipped: %s", exc)
+
+    # Relationship / inference DATA layer (ADR-0004): populate the corpus-side
+    # mention index, citation graph, derived edges, and OHSU-interest map for the
+    # papers new this run. Offline-only, new-papers-only + resumable, and each is
+    # isolated so a hiccup never aborts the digest/persist. The tables live in
+    # corpus.sqlite, so the existing HF Dataset push/pull carries them — no change
+    # to sync_to_hub. Skip when --no-embed (no new classified papers).
+    if not args.no_relationships and not args.no_embed:
+        _relationship_step(args.db)
 
     if not args.no_digest and not args.no_embed:
         path, html_str = make_digest(window, db_path=args.db, client=client, mode=mode)

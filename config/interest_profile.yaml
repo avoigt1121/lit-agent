@@ -154,3 +154,40 @@ tracked_keywords:
   stroma_tme: [myCAF, iCAF, hyaluronan, "stellate cell", desmoplasia]
   early_detection_biomarkers: ["CA19-9", cfDNA, ctDNA, exosome, IPMN]
   cachexia_resiliency: [cachexia, sarcopenia, GDF15, myosteatosis]
+
+# ---------------------------------------------------------------------------
+# Relationship / inference DATA layer (ADR-0004) — config, not code.
+# Tunes the four OFFLINE populators (pipeline/mentions.py, citations.py,
+# relationships.py, ohsu_map.py). Conservative defaults; the layer is additive
+# and read-only-surfaced, so changing these never needs a redeploy.
+# ---------------------------------------------------------------------------
+relationships:
+  mentions:
+    # The literal-term lexicon is built from `tracked_keywords` + each focus
+    # area's `keywords` by default; `extra_genes` adds curated symbols not
+    # already listed. Literal scan is case-SENSITIVE for short all-caps symbols
+    # (<=4 chars, e.g. MYC, KRAS, ATR) to avoid English-word false positives
+    # (MAX/ARE/CAR), case-insensitive for longer multi-char terms.
+    extra_genes: [KRAS, TP53, CDKN2A, SMAD4, BRCA1, BRCA2, PALB2, ATM, ATR,
+                  STK11, GNAS, ARID1A, MYC, MYCN, ELAVL1, FBXW7, PTEN, NOTCH1,
+                  YAP1, SOX9, GATA6, NR5A2, KLF5, ZEB1, SNAI1, EGFR, ERBB2]
+    case_sensitive_max_len: 4   # symbols this short are matched case-sensitively
+    use_epmc_annotations: false # opt-in: also pull EPMC text-mined annotations (slower)
+  citations:
+    enabled: true
+    # Track papers CITING these EPMC targets (source/ext_id). Seed: Loveless et
+    # al. PDAC single-cell atlas (PMID 39636224) — a Steele-lab REFERENCE of
+    # interest, NOT a BCC/Sears-authored paper.
+    track_targets:
+      - {src: MED, ext_id: "39636224", note: "Loveless et al. PDAC single-cell atlas (Steele lab)"}
+    page_size: 1000
+    max_pages: 25          # cap per target per run (politeness + cost)
+    fetch_corpus_refs: false  # also pull references for new corpus papers (off in v1)
+  derived_relations:
+    min_shared_genes: 2    # an edge needs >= this many shared literal genes
+    max_neighbors: 25      # cap shared-gene neighbors per paper (combinatorics)
+    shared_focus: true     # also emit a shared_focus edge for co-classified pairs
+  ohsu_map:
+    enabled: true
+    # v1 population = author-surname match against config/seed_authors.yaml.
+    min_author_match: 1

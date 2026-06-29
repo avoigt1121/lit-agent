@@ -26,7 +26,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Scalar columns stored as their own SQLite columns; everything else in the
 # normalized record is JSON-encoded into the matching column.
@@ -128,6 +128,100 @@ def init_schema(conn: sqlite3.Connection) -> None:
             n_records    INTEGER,         -- unique records persisted after dedup
             ingested_at  TEXT,            -- ISO timestamp the window was completed
             PRIMARY KEY (period_start, source)
+        );
+
+        -- ===================================================================
+        -- Relationship / inference DATA layer (schema v6, ADR-0004).
+        -- Populated OFFLINE (pipeline/mentions.py, citations.py, relationships.py,
+        -- ohsu_map.py); the Space reads these read-only like the rest of the corpus.
+        -- These are the corpus-side substrate future cross-paper-inference tools
+        -- consume — NOT the chat-facing tools themselves.
+        -- ===================================================================
+
+        -- (1) Literal entity-mention index. DISTINCT from topic_tags/focus_areas:
+        -- a focus-area tag is a CLASSIFIER label ("Oncogenic drivers & gene
+        -- regulation"); a mention is the literal surface term ("MYC") found in
+        -- title+abstract (+ OA full text where available) or in Europe PMC's
+        -- text-mined annotations. Lets "papers that MENTION MYC" be answered.
+        CREATE TABLE IF NOT EXISTS mentions (
+            paper_id    TEXT NOT NULL,
+            entity_type TEXT NOT NULL,   -- 'gene' | 'disease' | 'chemical' | ...
+            entity      TEXT NOT NULL,   -- normalized surface form, e.g. 'MYC'
+            method      TEXT NOT NULL,   -- 'epmc_annotation' | 'literal_scan'
+            count       INTEGER DEFAULT 1,  -- occurrences (literal_scan); 1 for annotations
+            PRIMARY KEY (paper_id, entity_type, entity, method),
+            FOREIGN KEY (paper_id) REFERENCES papers(paper_id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_mentions_entity ON mentions(entity_type, entity);
+        CREATE INDEX IF NOT EXISTS idx_mentions_paper  ON mentions(paper_id);
+
+        -- (2) Directed citation graph from Europe PMC citation/reference links.
+        -- Endpoints are keyed by EPMC's (source, ext_id) pair (e.g. MED/39636224)
+        -- so an edge survives even when one endpoint is OUTSIDE our corpus; the
+        -- nullable *_paper_id columns hold the resolved internal id when present.
+        CREATE TABLE IF NOT EXISTS citation_edges (
+            citing_src      TEXT NOT NULL,   -- EPMC source: MED | PPR | PMC | ...
+            citing_ext_id   TEXT NOT NULL,   -- id within that source
+            cited_src       TEXT NOT NULL,
+            cited_ext_id    TEXT NOT NULL,
+            citing_paper_id TEXT,            -- resolved internal paper_id, else NULL
+            cited_paper_id  TEXT,            -- resolved internal paper_id, else NULL
+            source          TEXT DEFAULT 'europepmc',
+            created_at      TEXT,
+            PRIMARY KEY (citing_src, citing_ext_id, cited_src, cited_ext_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cite_cited  ON citation_edges(cited_src, cited_ext_id);
+        CREATE INDEX IF NOT EXISTS idx_cite_citing ON citation_edges(citing_src, citing_ext_id);
+        CREATE INDEX IF NOT EXISTS idx_cite_cited_pid  ON citation_edges(cited_paper_id);
+        CREATE INDEX IF NOT EXISTS idx_cite_citing_pid ON citation_edges(citing_paper_id);
+
+        -- (3) Derived paper<->paper relationship edges (the substrate for
+        -- "related papers" / "cross-field correlation"). UNDIRECTED, stored once
+        -- with src_paper_id < dst_paper_id canonically. rel_type in
+        -- {shared_genes, shared_focus, citation}; ADR-0003's semantic
+        -- {agreement,conflict,gap} edges are a SEPARATE future table.
+        CREATE TABLE IF NOT EXISTS paper_relations (
+            src_paper_id TEXT NOT NULL,
+            dst_paper_id TEXT NOT NULL,
+            rel_type     TEXT NOT NULL,
+            weight       REAL,            -- # shared genes, Jaccard, or 1.0 (citation)
+            evidence     TEXT,            -- JSON, e.g. {"genes": ["MYC","KRAS"]}
+            created_at   TEXT,
+            PRIMARY KEY (src_paper_id, dst_paper_id, rel_type),
+            FOREIGN KEY (src_paper_id) REFERENCES papers(paper_id) ON DELETE CASCADE,
+            FOREIGN KEY (dst_paper_id) REFERENCES papers(paper_id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_prel_src  ON paper_relations(src_paper_id, rel_type);
+        CREATE INDEX IF NOT EXISTS idx_prel_dst  ON paper_relations(dst_paper_id, rel_type);
+        CREATE INDEX IF NOT EXISTS idx_prel_type ON paper_relations(rel_type);
+
+        -- (4) OHSU/BCC-interest mapping (STUB). Relates a paper to a Center
+        -- interest — a seed author/lab (config/seed_authors.yaml) or focus area
+        -- (config/interest_profile.yaml). Population is minimal in v1 (author-name
+        -- match); the table is the contract future "OHSU research targets" /
+        -- "correlate with active OHSU work" tools will read.
+        CREATE TABLE IF NOT EXISTS ohsu_interest_links (
+            paper_id      TEXT NOT NULL,
+            interest_id   TEXT NOT NULL,   -- e.g. an ORCID, a lab id, or a focus_area id
+            interest_kind TEXT NOT NULL,   -- 'seed_author' | 'lab' | 'focus_area'
+            score         REAL,
+            evidence      TEXT,            -- JSON, e.g. {"matched_author": "Rosalie Sears"}
+            created_at    TEXT,
+            PRIMARY KEY (paper_id, interest_id, interest_kind),
+            FOREIGN KEY (paper_id) REFERENCES papers(paper_id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_ohsu_interest ON ohsu_interest_links(interest_id, interest_kind);
+        CREATE INDEX IF NOT EXISTS idx_ohsu_paper    ON ohsu_interest_links(paper_id);
+
+        -- Resumable progress for the four populators above (mirrors
+        -- census_progress / classify_backfill_progress). One row per
+        -- (layer, paper_id) marks that paper as processed for that layer, so a
+        -- paper with legitimately zero results is not reprocessed every run.
+        CREATE TABLE IF NOT EXISTS relationship_progress (
+            layer    TEXT NOT NULL,   -- 'mentions' | 'citations' | 'relations' | 'ohsu'
+            paper_id TEXT NOT NULL,
+            done_at  TEXT,
+            PRIMARY KEY (layer, paper_id)
         );
 
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -414,3 +508,231 @@ def mark_census_period(conn: sqlite3.Connection, period_start: str, period_end: 
          datetime.now().isoformat(timespec="seconds")),
     )
     conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Relationship / inference DATA layer (schema v6, ADR-0004)
+#
+# Read/write accessors for the four offline-populated tables. Writers are
+# idempotent upserts so a re-run of any populator never duplicates rows. Readers
+# are the contract the future cross-paper-inference tools (and the optional
+# read-side surfacing) consume.
+# ---------------------------------------------------------------------------
+
+def _now() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+# --- progress (resumable populators) ---------------------------------------
+
+def relationship_progress_present(conn: sqlite3.Connection, layer: str) -> set[str]:
+    """paper_ids already processed for ``layer`` (for resumable backfills)."""
+    return {r[0] for r in conn.execute(
+        "SELECT paper_id FROM relationship_progress WHERE layer=?", (layer,))}
+
+
+def mark_relationship_progress(conn: sqlite3.Connection, layer: str, paper_ids,
+                               commit: bool = True) -> None:
+    """Mark paper_ids as processed for ``layer`` (idempotent)."""
+    rows = [(layer, pid, _now()) for pid in paper_ids]
+    if not rows:
+        return
+    conn.executemany(
+        "INSERT INTO relationship_progress(layer, paper_id, done_at) VALUES(?,?,?) "
+        "ON CONFLICT(layer, paper_id) DO UPDATE SET done_at=excluded.done_at",
+        rows,
+    )
+    if commit:
+        conn.commit()
+
+
+# --- (1) mentions ----------------------------------------------------------
+
+def set_mentions(conn: sqlite3.Connection, paper_id: str, mentions: list[dict],
+                 commit: bool = True) -> None:
+    """Replace a paper's mention rows. Each item: {entity_type, entity, method, count}."""
+    conn.execute("DELETE FROM mentions WHERE paper_id=?", (paper_id,))
+    if mentions:
+        conn.executemany(
+            "INSERT OR REPLACE INTO mentions(paper_id, entity_type, entity, method, count) "
+            "VALUES(?,?,?,?,?)",
+            [(paper_id, m["entity_type"], m["entity"], m["method"], int(m.get("count", 1)))
+             for m in mentions],
+        )
+    if commit:
+        conn.commit()
+
+
+def papers_mentioning(conn: sqlite3.Connection, entity: str, entity_type: str | None = None,
+                      include_excluded: bool = False) -> list[str]:
+    """paper_ids that literally mention ``entity`` (case-insensitive surface match)."""
+    q = ("SELECT DISTINCT m.paper_id FROM mentions m JOIN papers p ON p.paper_id=m.paper_id "
+         "WHERE m.entity=? COLLATE NOCASE")
+    args: list = [entity]
+    if entity_type:
+        q += " AND m.entity_type=?"
+        args.append(entity_type)
+    if not include_excluded:
+        q += " AND p.excluded=0"
+    return [r[0] for r in conn.execute(q, args)]
+
+
+def mention_counts(conn: sqlite3.Connection, entity_type: str = "gene",
+                   top_n: int = 50, include_excluded: bool = False) -> list[tuple[str, int]]:
+    """Most-mentioned entities: [(entity, n_papers), ...] — analytics-ready."""
+    where = "" if include_excluded else " AND p.excluded=0"
+    rows = conn.execute(
+        f"SELECT m.entity, COUNT(DISTINCT m.paper_id) c "
+        f"FROM mentions m JOIN papers p ON p.paper_id=m.paper_id "
+        f"WHERE m.entity_type=?{where} GROUP BY m.entity COLLATE NOCASE "
+        f"ORDER BY c DESC LIMIT ?", (entity_type, top_n))
+    return [(r[0], r[1]) for r in rows]
+
+
+# --- (2) citation graph ----------------------------------------------------
+
+def upsert_citation_edges(conn: sqlite3.Connection, edges: list[dict], commit: bool = True) -> int:
+    """Idempotent upsert of directed citation edges. Returns rows written.
+
+    Each edge: {citing_src, citing_ext_id, cited_src, cited_ext_id,
+    citing_paper_id?, cited_paper_id?}. Re-running refreshes the resolved
+    internal paper_ids (a later-ingested paper resolves on the next run)."""
+    n = 0
+    now = _now()
+    for e in edges:
+        conn.execute(
+            "INSERT INTO citation_edges"
+            "(citing_src, citing_ext_id, cited_src, cited_ext_id, "
+            " citing_paper_id, cited_paper_id, source, created_at) "
+            "VALUES(?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(citing_src, citing_ext_id, cited_src, cited_ext_id) DO UPDATE SET "
+            "citing_paper_id=COALESCE(excluded.citing_paper_id, citation_edges.citing_paper_id), "
+            "cited_paper_id=COALESCE(excluded.cited_paper_id, citation_edges.cited_paper_id)",
+            (e["citing_src"], str(e["citing_ext_id"]), e["cited_src"], str(e["cited_ext_id"]),
+             e.get("citing_paper_id"), e.get("cited_paper_id"),
+             e.get("source", "europepmc"), now),
+        )
+        n += 1
+    if commit:
+        conn.commit()
+    return n
+
+
+def citing_papers(conn: sqlite3.Connection, cited_src: str, cited_ext_id: str,
+                  in_corpus_only: bool = False) -> list[dict]:
+    """Edges citing a given (src, ext_id) target — e.g. the Loveless seed.
+
+    Returns [{citing_src, citing_ext_id, citing_paper_id}]; in_corpus_only keeps
+    only edges whose citing paper resolved to a corpus row."""
+    q = ("SELECT citing_src, citing_ext_id, citing_paper_id FROM citation_edges "
+         "WHERE cited_src=? AND cited_ext_id=?")
+    if in_corpus_only:
+        q += " AND citing_paper_id IS NOT NULL"
+    rows = conn.execute(q, (cited_src, str(cited_ext_id)))
+    return [{"citing_src": r[0], "citing_ext_id": r[1], "citing_paper_id": r[2]} for r in rows]
+
+
+def resolve_citation_endpoints(conn: sqlite3.Connection, commit: bool = True) -> int:
+    """Backfill *_paper_id on citation_edges by matching MED ext_id -> papers.pmid.
+
+    Cheap key-free pass: links external citation endpoints to corpus papers as
+    later runs ingest them. Returns rows updated."""
+    # Build a pmid -> paper_id map once (papers.ids is JSON; pull pmid out).
+    pmid_map: dict[str, str] = {}
+    for pid, ids_json in conn.execute("SELECT paper_id, ids FROM papers"):
+        try:
+            pmid = (json.loads(ids_json) or {}).get("pmid") if ids_json else None
+        except (ValueError, TypeError):
+            pmid = None
+        if pmid:
+            pmid_map[str(pmid)] = pid
+    n = 0
+    for col, src_col, id_col in (("citing_paper_id", "citing_src", "citing_ext_id"),
+                                 ("cited_paper_id", "cited_src", "cited_ext_id")):
+        rows = conn.execute(
+            f"SELECT rowid, {id_col} FROM citation_edges "
+            f"WHERE {col} IS NULL AND {src_col}='MED'").fetchall()
+        for rowid, ext_id in rows:
+            pid = pmid_map.get(str(ext_id))
+            if pid:
+                conn.execute(f"UPDATE citation_edges SET {col}=? WHERE rowid=?", (pid, rowid))
+                n += 1
+    if commit:
+        conn.commit()
+    return n
+
+
+# --- (3) derived paper<->paper relations -----------------------------------
+
+def upsert_paper_relations(conn: sqlite3.Connection, relations: list[dict],
+                           commit: bool = True) -> int:
+    """Idempotent upsert of derived edges. Each: {src_paper_id, dst_paper_id,
+    rel_type, weight, evidence(dict)}. src/dst are canonicalized (src < dst)."""
+    n = 0
+    now = _now()
+    for r in relations:
+        a, b = r["src_paper_id"], r["dst_paper_id"]
+        if a == b:
+            continue
+        if a > b:
+            a, b = b, a
+        conn.execute(
+            "INSERT INTO paper_relations(src_paper_id, dst_paper_id, rel_type, weight, evidence, created_at) "
+            "VALUES(?,?,?,?,?,?) "
+            "ON CONFLICT(src_paper_id, dst_paper_id, rel_type) DO UPDATE SET "
+            "weight=excluded.weight, evidence=excluded.evidence",
+            (a, b, r["rel_type"], r.get("weight"),
+             json.dumps(r.get("evidence")) if r.get("evidence") is not None else None, now),
+        )
+        n += 1
+    if commit:
+        conn.commit()
+    return n
+
+
+def relations_for_paper(conn: sqlite3.Connection, paper_id: str,
+                        rel_type: str | None = None) -> list[dict]:
+    """All derived edges touching ``paper_id`` (either endpoint)."""
+    q = ("SELECT src_paper_id, dst_paper_id, rel_type, weight, evidence FROM paper_relations "
+         "WHERE (src_paper_id=? OR dst_paper_id=?)")
+    args: list = [paper_id, paper_id]
+    if rel_type:
+        q += " AND rel_type=?"
+        args.append(rel_type)
+    out = []
+    for r in conn.execute(q, args):
+        other = r[1] if r[0] == paper_id else r[0]
+        out.append({"other_paper_id": other, "rel_type": r[2], "weight": r[3],
+                    "evidence": json.loads(r[4]) if r[4] else None})
+    return out
+
+
+# --- (4) OHSU interest links -----------------------------------------------
+
+def set_ohsu_links(conn: sqlite3.Connection, paper_id: str, links: list[dict],
+                   commit: bool = True) -> None:
+    """Replace a paper's OHSU-interest links. Each: {interest_id, interest_kind,
+    score, evidence(dict)}."""
+    conn.execute("DELETE FROM ohsu_interest_links WHERE paper_id=?", (paper_id,))
+    if links:
+        conn.executemany(
+            "INSERT OR REPLACE INTO ohsu_interest_links"
+            "(paper_id, interest_id, interest_kind, score, evidence, created_at) "
+            "VALUES(?,?,?,?,?,?)",
+            [(paper_id, l["interest_id"], l["interest_kind"], l.get("score"),
+              json.dumps(l.get("evidence")) if l.get("evidence") is not None else None, _now())
+             for l in links],
+        )
+    if commit:
+        conn.commit()
+
+
+def papers_for_interest(conn: sqlite3.Connection, interest_id: str,
+                        interest_kind: str | None = None) -> list[str]:
+    """paper_ids linked to a given OHSU interest (seed author / lab / focus area)."""
+    q = "SELECT DISTINCT paper_id FROM ohsu_interest_links WHERE interest_id=?"
+    args: list = [interest_id]
+    if interest_kind:
+        q += " AND interest_kind=?"
+        args.append(interest_kind)
+    return [r[0] for r in conn.execute(q, args)]

@@ -389,6 +389,59 @@ Space weekly.
 - **Translational-motion (trials) block is UNCHANGED** — it stays weekly (it's a
   genuine new-registrations feed, not a 12-month rollup).
 
+### Decisions resolved (2026-06-29) — corpus-side relationship DATA layer (ADR-0004)
+
+Tier-3 (DATA) of the 3-tier cross-paper-inference roadmap. Built **offline-only**
+on branch `feat/relationship-layer` — adds the corpus-side relationship substrate
+future inference tools will read; **does NOT build the chat-facing tools** and does
+**not touch the Space/chat (`app.py`, `ui.py`, `qa/`)**. See `docs/adr/ADR-0004`.
+Complements (does not replace) ADR-0003: this layer is **structural/literal,
+no-LLM, every edge a verifiable fact**; ADR-0003's `agreement/conflict/gap`
+semantic edges are a separate later table.
+
+- **Schema v6** (`store/db.py`, `SCHEMA_VERSION` 5→6, additive `CREATE IF NOT
+  EXISTS` — no `papers`/`topic_tags` change, no vectors rebuild). Four tables +
+  accessors:
+  - `mentions` — **literal** entity index (`entity_type, entity, method, count`),
+    DISTINCT from `topic_tags`: the `myc` focus tag is a classifier label, while a
+    mention is the literal "MYC" in title+abstract. Makes "papers that MENTION MYC"
+    answerable (`db.papers_mentioning`). `method ∈ {literal_scan, epmc_annotation}`.
+  - `citation_edges` — directed citation graph keyed by EPMC `(source, ext_id)` so
+    an edge survives an out-of-corpus endpoint; nullable `*_paper_id` resolve via
+    `resolve_citation_endpoints` (pmid→paper_id) as papers are ingested.
+  - `paper_relations` — derived undirected edges (`src<dst` canonical),
+    `rel_type ∈ {shared_genes, shared_focus, citation}`, with `evidence` JSON.
+  - `ohsu_interest_links` — paper↔OHSU-interest map (`seed_author|lab|focus_area`).
+  - `relationship_progress (layer, paper_id)` — one resumable high-water table for
+    all four populators (mirrors `census_progress`).
+- **Four populators** (`pipeline/`), offline, **new-papers-only + resumable**:
+  - `mentions.py` — literal-scan against a config lexicon (`tracked_keywords` +
+    focus `keywords` + `extra_genes`). **Case-SENSITIVE for ≤4-char all-caps
+    symbols** (MYC/KRAS/ATR) so English words (MAX/ARE/CAR) don't false-positive;
+    word-boundary regex. Tested: `car`/`max` do NOT match.
+  - `citations.py` — EPMC **sanctioned** citations/references REST (NOT scraping);
+    tracks papers citing config `track_targets` — seed PMID **39636224** (Loveless
+    et al. atlas, a **Steele-lab** reference of interest, NOT BCC-authored — never
+    call it "ours"). Live-verified: 31 citers page 1. Corpus-refs pass opt-in/off.
+  - `relationships.py` — deterministic edges from mentions+focus+citations,
+    **bounded** (shared-gene candidates only, `max_neighbors` cap). The **cross-field
+    correlation** signal falls out of `shared_genes` + differing `focus_areas`
+    (tested: PDAC↔neuroscience paper via shared MYC/KRAS).
+  - `ohsu_map.py` — STUB: surname-match vs `config/seed_authors.yaml` →
+    `seed_author` links. Richer mappings add new `interest_kind` rows, no schema change.
+- **Config** (`config/interest_profile.yaml` `relationships:` block) — lexicon,
+  citation targets, edge thresholds; conservative defaults; no redeploy to tune.
+- **Wiring**: `run_weekly._relationship_step` runs after classify (gated by
+  `--no-relationships`, skipped under `--no-embed`), each layer isolated in
+  try/except. Tables live in `corpus.sqlite` so the **existing** HF Dataset
+  push/pull carries them — `sync_to_hub`/`pull_from_hub` unchanged.
+- **Tests**: `tests/test_relationship_layer.py` (6 pass — schema, mention index +
+  false-positive guard, resumability, cross-field edge, citation resolution +
+  idempotency, OHSU mapping). **Not merged/deployed** — branch only, pending review.
+- **Next (operator)**: backfill the existing corpus a layer at a time
+  (`python -m pipeline.mentions --all`, etc.). Read-side surfacing (qa/ + Space
+  tabs) is deliberately deferred (Tier 1/2).
+
 ### Decisions resolved (2026-06-29) — Q&A handles corpus/meta questions, not just topical
 
 The Space chat only did semantic vector retrieval, so non-topical questions
