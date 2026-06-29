@@ -125,6 +125,21 @@ def build_corpus(records: list[dict], window: dict, *, db_path: Path = DEFAULT_D
             "index_path": str(index_path) if do_embed else None}
 
 
+def _is_monthly_email(window: dict) -> bool:
+    """True on the first weekly run of the calendar month (window end in days 1–7).
+
+    The keyword-movers block ("What's heating up") analyzes a rolling 12-month
+    window, so week-over-week it barely moves — surfacing it every Monday is noise.
+    We render it in the email only on the month's first run; the FULL list stays
+    live on the Space's Trends tab every week regardless (cached unconditionally)."""
+    w_to = window.get("to")
+    try:
+        day = date.fromisoformat(w_to).day if w_to else date.today().day
+    except (TypeError, ValueError):
+        day = date.today().day
+    return day <= 7
+
+
 def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
                 mode: str = "dry_run") -> tuple[Path, str]:
     """Render the digest (banner per `mode`) + cache analytics. Returns (path, html)."""
@@ -154,10 +169,15 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
     # Share-of-voice leaderboard (analytics.footer_html) intentionally NOT rendered
     # in the email: it measured raw Europe PMC keyword-match VOLUME, not the curated
     # digest, and read as a precision claim it couldn't back. The series is still
-    # computed + cached (analytics.json) for the Space. The keyword movers stay —
-    # each links out to the actual Europe PMC papers, so it's verifiable.
-    footer = (analytics.keyword_movers_html(movers, profile, pdac_query=pdac_query,
-                                            see_all_url=space_url)
+    # computed + cached (analytics.json) for the Space.
+    # Keyword movers ("What's heating up") analyze a rolling 12-month window, so the
+    # week-over-week delta is tiny — rendered in the email MONTHLY only (first run of
+    # the month). The full list is always on the Space's Trends tab (cached above,
+    # unconditionally), so weekly readers never lose access — it just leaves the inbox.
+    movers_html = (analytics.keyword_movers_html(movers, profile, pdac_query=pdac_query,
+                                                 see_all_url=space_url)
+                   if _is_monthly_email(window) else "")
+    footer = (movers_html
               + clinicaltrials.motion_html_from_cache(see_all_url=space_url))  # Phase F: cached offline
     html_str = build_digest_html(papers, profile, window, client=client,
                                  analytics_html=footer, mode=mode)

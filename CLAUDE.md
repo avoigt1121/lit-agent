@@ -369,6 +369,23 @@ no "see all". Resolution = host the FULL lists on the Space + link from the emai
   secrets names" — a name set as BOTH a Space variable and a secret. Fix = pick
   one (deleted the `CORPUS_HF_DATASET` secret, kept the variable) and factory-reboot.
 
+### Decisions resolved (2026-06-29) — "What's heating up" is now MONTHLY in the email
+
+Lead feedback: the keyword-movers ("What's heating up") block analyzes a rolling
+12-month window, so its week-over-week delta is tiny — surfacing it in every Monday
+email is noise. Resolution = render it in the email **monthly only**, keep it on the
+Space weekly.
+
+- **`run_weekly._is_monthly_email(window)`** — True when the window end falls in days
+  1–7 of the month (the month's first weekly cron run). `make_digest` renders the
+  `keyword_movers_html` block only then; other weeks the email omits it.
+- **No loss of access.** The FULL movers list is still cached to `analytics.json`
+  **unconditionally** every run (`keyword_movers(top_n=50)` is unchanged), so the
+  Space's "Trends & Translational Motion" tab stays current weekly. Only the inbox
+  copy goes monthly.
+- **Translational-motion (trials) block is UNCHANGED** — it stays weekly (it's a
+  genuine new-registrations feed, not a 12-month rollup).
+
 ### Decisions resolved (2026-06-29) — Q&A handles corpus/meta questions, not just topical
 
 The Space chat only did semantic vector retrieval, so non-topical questions
