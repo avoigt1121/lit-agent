@@ -172,7 +172,29 @@ relationships:
                   STK11, GNAS, ARID1A, MYC, MYCN, ELAVL1, FBXW7, PTEN, NOTCH1,
                   YAP1, SOX9, GATA6, NR5A2, KLF5, ZEB1, SNAI1, EGFR, ERBB2]
     case_sensitive_max_len: 4   # symbols this short are matched case-sensitively
-    use_epmc_annotations: false # opt-in: also pull EPMC text-mined annotations (slower)
+    # OPT-IN broad-recall enrichment (pipeline/annotate.py). When true, the weekly
+    # relationship step also pulls Europe PMC's text-mined annotations (every
+    # gene/disease/chemical EPMC's NLP tagged) for new, EPMC-addressable papers and
+    # writes them as method='epmc_annotation' rows ALONGSIDE the curated
+    # literal_scan rows (merge-aware writer — literal rows are never clobbered).
+    # Default OFF: it is a corpus-scale extra API pass. Sanctioned EPMC Annotations
+    # API only (https://www.ebi.ac.uk/europepmc/annotations_api) — never scraping.
+    use_epmc_annotations: false
+    annotations:
+      # EPMC annotation type -> our entity_type. Only these types are kept; any
+      # other EPMC type is ignored. (EPMC types: Gene_Proteins, Diseases,
+      # Chemicals, Organisms, Gene_Function, Accession_Numbers, ...)
+      types:
+        Gene_Proteins: gene
+        Diseases: disease
+        Chemicals: chemical
+        Organisms: organism
+      # 'exact'     -> store the literal matched span (grounded, conservative;
+      #                avoids EPMC's occasional wrong UMLS-concept name on a span).
+      # 'preferred' -> store EPMC's preferred/canonical tag name when present.
+      entity_source: exact
+      batch_size: 8        # articleIds per request (EPMC caps at 8)
+      per_run_cap: 2000    # max NEW papers to enrich per weekly run (politeness/cost)
   citations:
     enabled: true
     # Track papers CITING these EPMC targets (source/ext_id). Seed: Loveless et

@@ -563,6 +563,29 @@ def set_mentions(conn: sqlite3.Connection, paper_id: str, mentions: list[dict],
         conn.commit()
 
 
+def set_mentions_for_method(conn: sqlite3.Connection, paper_id: str, mentions: list[dict],
+                            method: str, commit: bool = True) -> None:
+    """Replace ONLY a paper's rows for one ``method``, leaving other methods intact.
+
+    ``set_mentions`` deletes every row for the paper, so it cannot be used by a
+    second, independently-run populator without clobbering the first. The literal
+    scan (``method='literal_scan'``) and the EPMC-annotation enrichment
+    (``method='epmc_annotation'``) run as separate offline passes (ADR-0004); this
+    merge-aware writer lets the annotation pass upsert its rows without touching the
+    literal_scan rows (or vice-versa). Each item: {entity_type, entity, count}.
+    """
+    conn.execute("DELETE FROM mentions WHERE paper_id=? AND method=?", (paper_id, method))
+    if mentions:
+        conn.executemany(
+            "INSERT OR REPLACE INTO mentions(paper_id, entity_type, entity, method, count) "
+            "VALUES(?,?,?,?,?)",
+            [(paper_id, m["entity_type"], m["entity"], method, int(m.get("count", 1)))
+             for m in mentions],
+        )
+    if commit:
+        conn.commit()
+
+
 def papers_mentioning(conn: sqlite3.Connection, entity: str, entity_type: str | None = None,
                       include_excluded: bool = False) -> list[str]:
     """paper_ids that literally mention ``entity`` (case-insensitive surface match)."""

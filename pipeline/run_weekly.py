@@ -189,11 +189,14 @@ def _relationship_step(db_path: Path) -> None:
     """Populate the ADR-0004 relationship data layer for this run's new papers.
 
     Each sub-layer is isolated so one failing (e.g. an EPMC citation hiccup) does
-    not block the others or the run. Order matters: mentions → citations → derived
-    relations (which read mentions + citations) → ohsu map.
+    not block the others or the run. Order matters: mentions → annotations
+    (EPMC text-mined enrichment; only when ``use_epmc_annotations`` is on in config,
+    runs BEFORE derived relations so shared_genes edges see the broader entity set)
+    → citations → derived relations (which read mentions + citations) → ohsu map.
     """
-    from pipeline import mentions, citations, relationships, ohsu_map
+    from pipeline import annotate, mentions, citations, relationships, ohsu_map
     for name, fn in (("mentions", lambda: mentions.index_mentions(db_path)),
+                     ("annotations", lambda: annotate.run(db_path)),
                      ("citations", lambda: citations.run(db_path)),
                      ("relations", lambda: relationships.derive_relations(db_path)),
                      ("ohsu_map", lambda: ohsu_map.map_interests(db_path))):

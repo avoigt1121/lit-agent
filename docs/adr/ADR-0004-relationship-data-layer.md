@@ -151,6 +151,9 @@ to `papers`/`topic_tags`, to "new" (`first_seen_date`), or to the Space/Q&A.
 ## Action Items
 1. [x] Schema v6 tables + accessors in `store/db.py`; `SCHEMA_VERSION` bump.
 2. [x] `pipeline/mentions.py` — literal mention index (+ EPMC annotations passthrough).
+2b. [x] `pipeline/annotate.py` — **broad-recall enrichment via the EPMC Annotations
+   API** (see "EPMC annotation enrichment" below). Done 2026-06-29 on branch
+   `feat/epmc-annotations`.
 3. [x] `pipeline/citations.py` — EPMC citation graph; Loveless seed target.
 4. [x] `pipeline/relationships.py` — derived `shared_genes` / `shared_focus` / `citation` edges.
 5. [x] `pipeline/ohsu_map.py` — seed-author OHSU-interest stub.
@@ -160,6 +163,43 @@ to `papers`/`topic_tags`, to "new" (`first_seen_date`), or to the Space/Q&A.
 9. [ ] **(operator)** Backfill the existing corpus one layer at a time
    (`python -m pipeline.mentions --all`, etc.); eyeball quality; watch Jobs billing.
 10. [ ] **(later, separate)** Read-side surfacing in `qa/` + per-area Space views — explicitly out of scope here.
+
+## EPMC annotation enrichment (2026-06-29, branch `feat/epmc-annotations`)
+
+The deferred item — "the harvest never populates `annotations.genes/diseases`, so
+the literal index relies only on the curated lexicon" — is now addressed with a
+broad-recall enrichment pass.
+
+- **`pipeline/annotate.py`** — a SEPARATE, resumable populator (not folded into the
+  weekly literal scan) that pulls Europe PMC's text-mined annotations for new,
+  EPMC-addressable papers and writes them as `method='epmc_annotation'` rows in the
+  same `mentions` table. This adds every gene/disease/chemical EPMC's NLP tagged on
+  top of the ~30-80 curated literal terms.
+- **Sanctioned API:** the Europe PMC **Annotations API**
+  (`annotations_api/annotationsByArticleIds?articleIds=MED:<pmid>&type=…`) — a public
+  TDM service, NOT the core search endpoint, NOT scraping. Reuses harvest's polite
+  retrying session (`_session`/`request_json`/`POLITE_PAUSE`); batches up to 8
+  articleIds/request (the API cap). Live shape confirmed once against pmid 39636224.
+- **Merge-aware, non-destructive:** writes via the new
+  `db.set_mentions_for_method(...)`, which replaces only the paper's
+  `epmc_annotation` rows — the independently-run `literal_scan` rows are preserved.
+  The two populators run in either order.
+- **Resumability:** new `relationship_progress` layer `'annotations'`. New-papers-only,
+  cap-limited per run (`per_run_cap`, default 2000); papers with no EPMC id are
+  marked done without a fetch.
+- **Mapping:** EPMC annotation `type` → our `entity_type` (`Gene_Proteins`→gene,
+  `Diseases`→disease, `Chemicals`→chemical, `Organisms`→organism; config-overridable),
+  `entity` = the literal `exact` span (grounded default) or EPMC's preferred tag name
+  (`entity_source: preferred`), `count` = #occurrences EPMC tagged.
+- **Config-gated, default OFF:** lives under the existing
+  `relationships.mentions.use_epmc_annotations` flag (plus `annotations.{types,
+  entity_source, batch_size, per_run_cap}`). `run_weekly._relationship_step` runs it
+  after `mentions` and before `relations` (so `shared_genes` edges can benefit),
+  isolated in the same per-layer try/except, only when the flag is on. No
+  `sync_to_hub` change — the rows ride the existing corpus push/pull.
+- **Tests:** `tests/test_epmc_annotations.py` (network-free; mapping + merge writer +
+  resumability + `papers_mentioning` on annotation-only entities). 6/6 pass;
+  `test_relationship_layer.py` still 6/6.
 
 ## References
 - Internal: `store/db.py` (schema v6, `_migrate_excluded_columns` pattern);

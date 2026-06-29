@@ -442,6 +442,43 @@ semantic edges are a separate later table.
   (`python -m pipeline.mentions --all`, etc.). Read-side surfacing (qa/ + Space
   tabs) is deliberately deferred (Tier 1/2).
 
+### Decisions resolved (2026-06-29) — EPMC annotation enrichment of the mention index
+
+Follow-up to ADR-0004 on branch `feat/epmc-annotations` (off `feat/relationship-layer`).
+The harvest only fetches `resultType=core` search fields, so `annotations.genes/diseases`
+is empty on every corpus row — the literal index therefore saw only the ~30-80 curated
+lexicon terms. This adds broad-recall coverage. **Branch only — not merged/deployed.**
+
+- **`pipeline/annotate.py`** — a SEPARATE, resumable populator (NOT folded into the
+  weekly literal scan) that pulls Europe PMC's **text-mined annotations** for new,
+  EPMC-addressable papers and writes them as `method='epmc_annotation'` rows in the
+  same `mentions` table — every gene/disease/chemical EPMC's NLP tagged, on top of
+  the curated `literal_scan` rows.
+- **Sanctioned API only** (`Access ≠ scraping`): the EPMC **Annotations API**
+  (`annotations_api/annotationsByArticleIds?articleIds=MED:<pmid>&type=…`), a public
+  TDM service — NOT the core search endpoint. Reuses harvest's polite retrying session;
+  batches ≤8 articleIds/request (the API cap). Live shape confirmed once vs pmid 39636224.
+- **Non-destructive merge** via new `db.set_mentions_for_method(...)` — replaces only
+  the paper's `epmc_annotation` rows, so `literal_scan` rows survive (and vice-versa);
+  the two populators run independently, in either order.
+- **Resumable**: new `relationship_progress` layer `'annotations'`; new-papers-only,
+  per-run cap (`per_run_cap`, default 2000); non-EPMC papers marked done without a fetch.
+- **Mapping**: EPMC `type`→`entity_type` (`Gene_Proteins`→gene, `Diseases`→disease,
+  `Chemicals`→chemical, `Organisms`→organism; config-overridable), `entity` = literal
+  `exact` span (grounded default) or preferred tag name (`entity_source: preferred`),
+  `count` = #occurrences.
+- **Config-gated, default OFF**: the existing `relationships.mentions.use_epmc_annotations`
+  flag now ENABLES this populator (plus `annotations.{types,entity_source,batch_size,
+  per_run_cap}`). `run_weekly._relationship_step` runs it **after `mentions`, before
+  `relations`** (so `shared_genes` edges see the broader entity set), same per-layer
+  try/except isolation. No `sync_to_hub` change.
+- **Tests**: `tests/test_epmc_annotations.py` (6 pass, network-free — mapping +
+  occurrence counts + type filter + exact/preferred + merge writer preserves
+  literal_scan + resumability + `papers_mentioning` on annotation-only entities);
+  `test_relationship_layer.py` still 6/6.
+- **Next (operator)**: flip `use_epmc_annotations: true` and backfill
+  (`python -m pipeline.annotate --all`); watch Jobs billing + EPMC politeness.
+
 ### Decisions resolved (2026-06-29) — Q&A handles corpus/meta questions, not just topical
 
 The Space chat only did semantic vector retrieval, so non-topical questions
