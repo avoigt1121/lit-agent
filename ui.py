@@ -107,7 +107,11 @@ class LitAgentUI:
         # similarity floor and return the generic orientation. Answer those
         # deterministically from SQLite first; topical questions fall through to
         # grounded synthesis below.
-        meta = corpus_qa.answer_meta(message, self._retriever, self._profile)
+        try:
+            meta = corpus_qa.answer_meta(message, self._retriever, self._profile)
+        except Exception:  # noqa: BLE001 — a meta failure must degrade to retrieval, not crash the chat
+            logger.exception("corpus_qa.answer_meta failed; falling through to retrieval")
+            meta = None
         if meta is not None:
             history[-1]["content"] = meta
             yield history, "", "_Answered from the corpus index (no passage retrieval needed)._"
@@ -159,7 +163,11 @@ class LitAgentUI:
             return self._init_error or "Corpus unavailable."
         if not question or not question.strip():
             return "Please provide a question."
-        meta = corpus_qa.answer_meta(question, self._retriever, self._profile)
+        try:
+            meta = corpus_qa.answer_meta(question, self._retriever, self._profile)
+        except Exception:  # noqa: BLE001 — degrade to retrieval rather than error
+            logger.exception("corpus_qa.answer_meta failed; falling through to retrieval")
+            meta = None
         if meta is not None:
             return meta
         passages = self._retriever.retrieve(question, k=6)

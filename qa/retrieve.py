@@ -52,6 +52,8 @@ class Retriever:
     """Loads the corpus + vector index once; answers retrieve() queries."""
 
     def __init__(self, db_path=DEFAULT_DB, index_path=DEFAULT_INDEX, embedder: Embedder | None = None):
+        self.db_path = db_path  # kept so per-request callers can open their own
+                                # thread-local connection (SQLite is single-thread)
         self.conn = db.connect(db_path)
         self.index = VectorIndex.load(index_path)
         self.embedder = embedder or Embedder()

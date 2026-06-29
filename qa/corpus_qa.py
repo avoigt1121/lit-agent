@@ -26,6 +26,8 @@ from __future__ import annotations
 import re
 from datetime import date, timedelta
 
+from store import db
+
 # Intent labels (RETRIEVE = "not a meta question; use the vector retriever").
 LIST_RECENT = "list_recent"
 CORPUS_SIZE = "corpus_size"
@@ -289,23 +291,32 @@ def answer_meta(question: str, retriever, profile: dict) -> str | None:
     """Return a deterministic answer for a corpus/meta question, or ``None`` to
     signal the caller should fall through to vector retrieval.
 
-    ``retriever`` is a qa.retrieve.Retriever (its ``.conn`` is read-only here).
+    ``retriever`` is a qa.retrieve.Retriever. We open our OWN short-lived SQLite
+    connection from ``retriever.db_path`` rather than reuse ``retriever.conn``:
+    the chat UI runs each request in a Gradio worker thread, and a SQLite
+    connection can only be used in the thread that created it (the retriever's
+    was created at app startup). A fresh connection created here lives and dies
+    in the calling thread, so it's thread-safe. (The topical retrieval path never
+    hit this because it reads an in-memory dict + the vector index, not the DB.)
     """
     intent = classify_intent(question)
     if intent == RETRIEVE:
         return None
-    conn = retriever.conn
-    if intent == HELP:
+    if intent == HELP:  # no DB access needed
         return _HELP
-    if intent == CORPUS_SIZE:
-        return _format_size(conn)
-    if intent == TOPIC_BREAKDOWN:
-        return _format_topics(conn, profile, _window_days(question))
-    if intent == LIST_RECENT:
-        days = _window_days(question) or 7
-        area_id = _detect_area(question, profile)
-        area_name = _name_for(area_id, profile) if area_id else None
-        rows, _ = _recent_rows(conn, days, limit=20, area_id=area_id)
-        total = _count_recent(conn, days, area_id)
-        return _format_recent(rows, days, area_name, total)
+    conn = db.connect(retriever.db_path)
+    try:
+        if intent == CORPUS_SIZE:
+            return _format_size(conn)
+        if intent == TOPIC_BREAKDOWN:
+            return _format_topics(conn, profile, _window_days(question))
+        if intent == LIST_RECENT:
+            days = _window_days(question) or 7
+            area_id = _detect_area(question, profile)
+            area_name = _name_for(area_id, profile) if area_id else None
+            rows, _ = _recent_rows(conn, days, limit=20, area_id=area_id)
+            total = _count_recent(conn, days, area_id)
+            return _format_recent(rows, days, area_name, total)
+    finally:
+        conn.close()
     return None
