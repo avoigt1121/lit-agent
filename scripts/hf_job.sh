@@ -30,6 +30,7 @@
 #   scripts/hf_job.sh ps          # list scheduled Jobs + status
 #   scripts/hf_job.sh unschedule  # delete a scheduled Job (lists ids, prompts)
 #   scripts/hf_job.sh backfill    # ONE-OFF: LLM-classify the historical backlog (scripts/classify_backfill.py)
+#   scripts/hf_job.sh annotate    # ONE-OFF: EPMC-annotation-enrich the corpus (scripts/annotate_backfill.py; keyless)
 #
 # `backfill` is a deliberately separate, ONE-OFF Job (`hf jobs run`, never `scheduled run`)
 # — it is ~13k sequential LLM calls (~2-3h), resumable, and must NEVER ride the weekly cron.
@@ -67,6 +68,16 @@ BACKFILL_BOOTSTRAP="git clone --depth 1 --branch ${REF} ${REPO_URL} /tmp/lit-age
 && cd /tmp/lit-agent \
 && pip install --no-cache-dir -q -r requirements.txt \
 && python -m scripts.classify_backfill -v ${BACKFILL_ARGS:-}"
+
+# Same clone+install, entrypoint = the ONE-OFF EPMC-annotation backfill (ADR-0004).
+# KEYLESS: the Europe PMC Annotations API needs no credential, so this Job needs only
+# HF_TOKEN + CORPUS_HF_DATASET to pull/push the durable corpus — NO Anthropic key.
+# Corpus-scale + resumable: a timeout-killed Job re-runs and skips processed papers.
+ANNOTATE_TIMEOUT="${ANNOTATE_TIMEOUT:-4h}"
+ANNOTATE_BOOTSTRAP="git clone --depth 1 --branch ${REF} ${REPO_URL} /tmp/lit-agent \
+&& cd /tmp/lit-agent \
+&& pip install --no-cache-dir -q -r requirements.txt \
+&& python -m scripts.annotate_backfill -v ${ANNOTATE_ARGS:-}"
 
 require_cli() {
   command -v hf >/dev/null 2>&1 || {
@@ -163,6 +174,18 @@ case "${1:-}" in
     echo "-> ONE-OFF classify-backfill HF Job (NOT scheduled):  flavor=$FLAVOR  timeout=$TIMEOUT  ref=$REF" >&2
     exec hf jobs run "${ARGS[@]}" -- "$IMAGE" bash -c "$BACKFILL_BOOTSTRAP"
     ;;
+  annotate)
+    # ONE-OFF EPMC-annotation backfill (ADR-0004). KEYLESS — skips the Anthropic
+    # preflight entirely; only warns if CORPUS_HF_DATASET is absent (no durable sync).
+    require_cli
+    if [ -z "${CORPUS_HF_DATASET:-}" ] && \
+       ! { [ -f "$SECRETS_FILE" ] && grep -qE "^[[:space:]]*CORPUS_HF_DATASET=" "$SECRETS_FILE"; }; then
+      echo "warning: CORPUS_HF_DATASET not in env or $SECRETS_FILE — the Job will NOT sync the durable corpus." >&2
+    fi
+    TIMEOUT="$ANNOTATE_TIMEOUT"; build_args
+    echo "-> ONE-OFF EPMC-annotation backfill HF Job (NOT scheduled):  flavor=$FLAVOR  timeout=$TIMEOUT  ref=$REF" >&2
+    exec hf jobs run "${ARGS[@]}" -- "$IMAGE" bash -c "$ANNOTATE_BOOTSTRAP"
+    ;;
   ps)
     require_cli
     hf jobs scheduled ps -a
@@ -174,7 +197,7 @@ case "${1:-}" in
     [ -n "${id:-}" ] && hf jobs scheduled delete "$id" || echo "cancelled."
     ;;
   *)
-    echo "usage: $0 {run|schedule|ps|unschedule|backfill}" >&2
+    echo "usage: $0 {run|schedule|ps|unschedule|backfill|annotate}" >&2
     exit 2
     ;;
 esac

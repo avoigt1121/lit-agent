@@ -179,7 +179,7 @@ relationships:
     # literal_scan rows (merge-aware writer — literal rows are never clobbered).
     # Default OFF: it is a corpus-scale extra API pass. Sanctioned EPMC Annotations
     # API only (https://www.ebi.ac.uk/europepmc/annotations_api) — never scraping.
-    use_epmc_annotations: false
+    use_epmc_annotations: true
     annotations:
       # EPMC annotation type -> our entity_type. Only these types are kept; any
       # other EPMC type is ignored. (EPMC types: Gene_Proteins, Diseases,

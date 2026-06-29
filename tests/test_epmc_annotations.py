@@ -173,12 +173,22 @@ def test_non_addressable_paper_marked_done_without_fetch():
     conn.close()
 
 
-def test_run_respects_config_flag(tmp_path=None):
-    # annotate.run() must no-op unless use_epmc_annotations is enabled. The shipped
-    # config default is OFF, so run() on the real profile is a skip.
+def test_run_respects_config_flag():
+    # annotate.run() must no-op unless use_epmc_annotations is enabled — independent
+    # of the shipped config default (which is ON now that the layer is deployed).
     dbp = _fresh_db()
-    out = annotate.run(dbp)
-    assert out.get("skipped")
+    prof_off = Path(tempfile.mkdtemp()) / "profile.yaml"
+    prof_off.write_text("relationships:\n  mentions:\n    use_epmc_annotations: false\n")
+    assert annotate.run(dbp, profile_path=prof_off).get("skipped")
+
+    prof_on = Path(tempfile.mkdtemp()) / "profile.yaml"
+    prof_on.write_text("relationships:\n  mentions:\n    use_epmc_annotations: true\n")
+    restore = _patch_fetch(None)
+    try:
+        out = annotate.run(dbp, profile_path=prof_on)  # enabled -> actually enriches
+    finally:
+        restore()
+    assert not out.get("skipped") and out["papers_processed"] == 1
 
 
 if __name__ == "__main__":
