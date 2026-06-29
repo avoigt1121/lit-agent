@@ -24,6 +24,7 @@ from pipeline import analytics, clinicaltrials
 from pipeline.digest import provenance_sentence
 from qa import answer as qa_answer
 from qa import corpus_qa
+from qa.planner import QueryPlanner
 from qa.retrieve import Retriever
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ class LitAgentUI:
         load_dotenv(ROOT / ".env")
         self._retriever = None
         self._client = None
+        self._planner = None
         self._init_error = None
         self._profile = self._load_profile()  # focus-area names for meta answers
         try:
@@ -72,6 +74,11 @@ class LitAgentUI:
                 logger.warning("ANTHROPIC_API_KEY unset — answers fall back to raw passages.")
         except Exception as exc:  # noqa: BLE001
             logger.warning("Anthropic client unavailable: %s", exc)
+        # The LLM query planner (Tier 1): understands any phrasing and composes
+        # topic + window + focus-area + count filters via tool-use. Needs both a
+        # corpus and a key; without a key we keep the key-free deterministic path.
+        if self._retriever is not None and self._client is not None:
+            self._planner = QueryPlanner(self._retriever, self._client, self._profile)
 
     # ------------------------------------------------------------------
     def _sources_md(self, passages) -> str:
@@ -116,6 +123,27 @@ class LitAgentUI:
             history[-1]["content"] = meta
             yield history, "", "_Answered from the corpus index (no passage retrieval needed)._"
             return
+
+        # Topical or HYBRID question (the deterministic pass deferred it). With a
+        # key, the LLM planner handles it: it plans tool calls — composing topic +
+        # time window + focus area + count — and answers ONLY from tool results
+        # under the same groundedness guard. This is what makes "What new papers
+        # this week mention MYC?" return recent MYC papers (search_corpus +
+        # since_days) rather than the whole week's list. Tool-use needs full
+        # assistant turns, so this path resolves to a complete answer rather than
+        # token-streaming; we show a brief working note while it plans.
+        if self._planner is not None:
+            history[-1]["content"] = "_Planning the search across the corpus…_"
+            yield history, "", "_Planning…_"
+            try:
+                rendered = self._planner.run([{"role": "user", "content": message}])
+                passages = self._planner.passages
+            except Exception:  # noqa: BLE001 — degrade to the direct retrieval path
+                logger.exception("planner.run failed; falling through to direct retrieval")
+            else:
+                history[-1]["content"] = rendered
+                yield history, "", self._sources_md(passages)
+                return
 
         since = None
         try:
@@ -170,6 +198,12 @@ class LitAgentUI:
             meta = None
         if meta is not None:
             return meta
+        # Topical / hybrid → LLM planner (composes filters, grounded tool-use).
+        if self._planner is not None:
+            try:
+                return self._planner.run([{"role": "user", "content": question}])
+            except Exception:  # noqa: BLE001 — degrade to direct retrieval
+                logger.exception("planner.run failed; falling through to direct retrieval")
         passages = self._retriever.retrieve(question, k=6)
         if not passages:
             return ORIENTATION

@@ -428,3 +428,45 @@ deterministic meta-intent router that runs BEFORE retrieval.
   client-rendered path. Debug lever: drive the Space's real fns over raw HTTP —
   `GET /config` lists `dependencies[].api_name` (e.g. `_respond`), then
   `POST /gradio_api/call/<api_name>` + stream the result.
+
+### Decisions resolved (2026-06-29) — LLM query planner replaces the brittle intent router (Tier 1)
+
+The rule-based router (`qa/corpus_qa.py`) maps a question to ONE intent and treats
+"listing" and "topical" as **mutually exclusive**, so a hybrid like "What new papers
+this week mention MYC?" listed the whole week and ignored MYC (also: "MYC" is 3 chars,
+below `_detect_area`'s ≥4 keyword threshold, and the `myc` area means "Oncogenic
+drivers", not a literal mention). Fixed with an LLM **query planner** that composes
+filters (topic + window + focus area + count) via Anthropic tool-use.
+
+- **New module `qa/planner.py` (`QueryPlanner`).** Tool-use loop whose tools wrap
+  EXISTING capabilities only (nothing new touches the corpus; Space still never
+  ingests): `search_corpus`→`Retriever.retrieve` (semantic + `since` first_seen
+  filter — this is what fixes the MYC hybrid: `search_corpus(query="MYC",
+  since_days=7)`), `list_recent`/`corpus_stats`/`topic_breakdown`→the new
+  `corpus_qa.*_text` wrappers, `get_paper`→`Retriever.retrieve(paper_id=…)`. The model
+  plans calls, then answers ONLY from tool results under the SAME guard as
+  `qa/answer.py` (`PLANNER_SYSTEM` = tool-planning preamble **+** verbatim
+  `SYSTEM_GUARD`); `render_citations` runs over the passages the tools actually
+  returned, so DOI/author/date are still never model-written. `focus_area` enum is
+  built from the live profile so the model can only name real area ids.
+- **Regex stays the cheap first pass.** `corpus_qa.answer_meta` still answers clear
+  meta intents deterministically (key-free). NEW: `corpus_qa.is_hybrid()` —
+  `answer_meta` now **defers** (returns `None`) a `LIST_RECENT` question that also
+  carries a topical-constraint connective ("about/mentioning/involving/…"), so the
+  hybrid routes to the planner instead of a bare list. `ui.py` builds a
+  `QueryPlanner` only when BOTH a corpus and `ANTHROPIC_API_KEY` are present;
+  **no-key degradation = unchanged** (deterministic meta + direct retrieval + raw
+  passages). Both `_respond` and `ask` route topical/hybrid → planner, with a
+  try/except fall-through to the old direct-retrieval path on any planner error.
+- **Tier 2 (per-chat memory) hedge:** `QueryPlanner.run(messages)` already takes a
+  messages/history list; v1 passes a single turn. Adding memory later = passing more
+  turns, not a rewrite.
+- **Streaming trade-off:** tool-use needs full assistant turns, so the planner
+  resolves to a COMPLETE answer (a brief "Planning…" note shows while it works)
+  rather than token-streaming. Groundedness > the streaming nicety; the `/ask` API
+  was non-streaming already.
+- **Verified** (mock client + fake retriever — no local corpus, gradio is Space-only):
+  routing table (10 cases) passes; the MYC hybrid calls `search_corpus` WITH the
+  `since` filter and renders a real DOI link; the iteration cap (`MAX_TOOL_ITERS=5`)
+  forces a tool-free final answer; eval harness unaffected (it tests the answer path
+  the planner reuses). NOT yet deployed to the Space (awaiting say-so).

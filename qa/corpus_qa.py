@@ -72,6 +72,27 @@ _RE_HELP = re.compile(
     r"|\bhow (do|does) (you|this|it) work\b|\bwhat questions\b|\bhelp\b"
     r"|\bwhat are your capabilities\b|\bwhat can this (do|answer)\b", re.I)
 
+# A topical CONSTRAINT riding on a listing/window question ("new papers this week
+# *mentioning MYC*", "papers added this month *about CAFs*"). When present, the
+# question is a HYBRID: a bare recent-list would silently drop the topic, so the
+# deterministic router must DEFER (return None) and let the LLM planner compose
+# search_corpus(query=<topic>, since=<window>). Conservative on purpose — only an
+# explicit "about/mentioning/involving/…" connective trips it; "new immunotherapy
+# papers this week" stays a deterministic area-scoped list (handled by _detect_area).
+_RE_TOPIC_CONSTRAINT = re.compile(
+    r"\b(mention\w*|about|regarding|involv\w*|concern\w*|discuss\w*|describ\w*|"
+    r"report\w*|featuring|focus(?:ed|ing)? on|related to|relating to|relevant to|"
+    r"that (?:discuss|mention|describe|report|cover)\w*)\b", re.I)
+
+
+def is_hybrid(question: str) -> bool:
+    """True when a listing/window question ALSO carries a topical constraint, so
+    it must be routed to the planner instead of a bare recent-list."""
+    q = question or ""
+    if not (_window_days(q) or _RE_LIST_RECENT.search(q)):
+        return False
+    return bool(_RE_TOPIC_CONSTRAINT.search(q))
+
 
 def classify_intent(question: str) -> str:
     q = (question or "").strip()
@@ -302,6 +323,11 @@ def answer_meta(question: str, retriever, profile: dict) -> str | None:
     intent = classify_intent(question)
     if intent == RETRIEVE:
         return None
+    # A listing question carrying a topical constraint ("new papers this week
+    # mentioning MYC") must NOT be flattened to a bare recent-list — defer so the
+    # caller routes it to the LLM planner, which honors the topic via search_corpus.
+    if intent == LIST_RECENT and is_hybrid(question):
+        return None
     if intent == HELP:  # no DB access needed
         return _HELP
     conn = db.connect(retriever.db_path)
@@ -320,3 +346,45 @@ def answer_meta(question: str, retriever, profile: dict) -> str | None:
     finally:
         conn.close()
     return None
+
+
+# --- reusable text builders (used by qa/planner.py tool wrappers) ------------
+# Each opens its OWN short-lived SQLite connection from ``retriever.db_path`` for
+# the SAME thread-safety reason answer_meta does (Gradio worker threads can't
+# reuse the retriever's startup connection). Real rows, real DOIs — still grounded.
+
+def valid_area_ids(profile: dict) -> list[str]:
+    return [aid for aid, _name, _terms in _area_index(profile)]
+
+
+def list_recent_text(retriever, profile: dict, window_days: int,
+                     focus_area: str | None = None, limit: int = 20) -> str:
+    area_id = focus_area if (focus_area in valid_area_ids(profile)) else None
+    area_name = _name_for(area_id, profile) if area_id else None
+    conn = db.connect(retriever.db_path)
+    try:
+        rows, _ = _recent_rows(conn, window_days, limit=limit, area_id=area_id)
+        total = _count_recent(conn, window_days, area_id)
+        return _format_recent(rows, window_days, area_name, total)
+    finally:
+        conn.close()
+
+
+def corpus_size_text(retriever) -> str:
+    conn = db.connect(retriever.db_path)
+    try:
+        return _format_size(conn)
+    finally:
+        conn.close()
+
+
+def topic_breakdown_text(retriever, profile: dict, window_days: int | None = None) -> str:
+    conn = db.connect(retriever.db_path)
+    try:
+        return _format_topics(conn, profile, window_days)
+    finally:
+        conn.close()
+
+
+def help_text() -> str:
+    return _HELP
