@@ -437,7 +437,8 @@ semantic edges are a separate later table.
   push/pull carries them — `sync_to_hub`/`pull_from_hub` unchanged.
 - **Tests**: `tests/test_relationship_layer.py` (6 pass — schema, mention index +
   false-positive guard, resumability, cross-field edge, citation resolution +
-  idempotency, OHSU mapping). **Not merged/deployed** — branch only, pending review.
+  idempotency, OHSU mapping). **MERGED to `main` + deployed** (2026-06-29, alongside
+  the EPMC annotation enrichment below — annotations depend on this layer's schema v6).
 - **Next (operator)**: backfill the existing corpus a layer at a time
   (`python -m pipeline.mentions --all`, etc.). Read-side surfacing (qa/ + Space
   tabs) is deliberately deferred (Tier 1/2).
@@ -447,7 +448,8 @@ semantic edges are a separate later table.
 Follow-up to ADR-0004 on branch `feat/epmc-annotations` (off `feat/relationship-layer`).
 The harvest only fetches `resultType=core` search fields, so `annotations.genes/diseases`
 is empty on every corpus row — the literal index therefore saw only the ~30-80 curated
-lexicon terms. This adds broad-recall coverage. **Branch only — not merged/deployed.**
+lexicon terms. This adds broad-recall coverage. **MERGED to `main` + deployed
+(flag ON); corpus backfill running as a one-off HF Job.**
 
 - **`pipeline/annotate.py`** — a SEPARATE, resumable populator (NOT folded into the
   weekly literal scan) that pulls Europe PMC's **text-mined annotations** for new,
@@ -467,17 +469,25 @@ lexicon terms. This adds broad-recall coverage. **Branch only — not merged/dep
   `Chemicals`→chemical, `Organisms`→organism; config-overridable), `entity` = literal
   `exact` span (grounded default) or preferred tag name (`entity_source: preferred`),
   `count` = #occurrences.
-- **Config-gated, default OFF**: the existing `relationships.mentions.use_epmc_annotations`
-  flag now ENABLES this populator (plus `annotations.{types,entity_source,batch_size,
-  per_run_cap}`). `run_weekly._relationship_step` runs it **after `mentions`, before
-  `relations`** (so `shared_genes` edges see the broader entity set), same per-layer
-  try/except isolation. No `sync_to_hub` change.
+- **Config flag now ON**: `relationships.mentions.use_epmc_annotations: true` (plus
+  `annotations.{types,entity_source,batch_size,per_run_cap}`). `run_weekly.
+  _relationship_step` runs it **after `mentions`, before `relations`** (so
+  `shared_genes` edges see the broader entity set), same per-layer try/except
+  isolation. No `sync_to_hub` change.
+- **Corpus backfill**: `scripts/annotate_backfill.py` (ONE-OFF; pull → loop
+  `enrich_annotations` in `--push-every` chunks → push; resumable, HF-Job-timeout-safe,
+  KEYLESS — only HF_TOKEN + CORPUS_HF_DATASET) + `scripts/hf_job.sh annotate` mode
+  (one-off `hf jobs run`, NEVER scheduled, 4h timeout, skips the Anthropic preflight).
+  Mirrors the `classify_backfill` / `hf_job.sh backfill` pattern.
+- **NOTE: merging this also landed `feat/relationship-layer` (97172f6) on `main`** —
+  the whole ADR-0004 DATA layer (mentions/citations/relations/ohsu) is now deployed,
+  not just the annotation enrichment (annotations depend on its schema v6).
 - **Tests**: `tests/test_epmc_annotations.py` (6 pass, network-free — mapping +
   occurrence counts + type filter + exact/preferred + merge writer preserves
   literal_scan + resumability + `papers_mentioning` on annotation-only entities);
   `test_relationship_layer.py` still 6/6.
-- **Next (operator)**: flip `use_epmc_annotations: true` and backfill
-  (`python -m pipeline.annotate --all`); watch Jobs billing + EPMC politeness.
+- **Backfill trigger**: `scripts/hf_job.sh annotate` (watch Jobs billing + EPMC
+  politeness; resumable so a timeout-killed Job just re-runs).
 
 ### Decisions resolved (2026-06-29) — Q&A handles corpus/meta questions, not just topical
 
