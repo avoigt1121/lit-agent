@@ -506,6 +506,10 @@ deploy (`git push space main`), unlike the offline-only layers.** Two SEPARATE c
   preamble updated to route "which/how many papers mention X" → this tool, conceptual
   "how does X work" → `search_corpus`. Optional `entity_type` enum (gene|disease|
   chemical|organism). Key-free degradation unchanged (planner only built with a key).
+  **Routing gotcha (fixed):** "how many papers mention SMAD4?" matched corpus_qa's
+  size regex (`how many … papers`) and returned total corpus size; `answer_meta` now
+  DEFERS a `CORPUS_SIZE` intent carrying an entity/mention constraint (`_RE_TOPIC_
+  CONSTRAINT`) to the planner, mirroring the `LIST_RECENT` hybrid defer.
 - **(2) Most-mentioned-entity leaderboards** — `pipeline/analytics.entity_leaderboards
   (conn, top_n)` + `entity_leaderboards_html()` (top genes/diseases/drugs by DISTINCT
   papers, via `db.mention_counts`). Rendered on the Space **Trends** tab. Computed ONCE
