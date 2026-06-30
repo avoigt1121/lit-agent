@@ -365,7 +365,11 @@ _LEADERBOARD_STOPWORDS = {
                 "carcinoma", "carcinomas", "neoplasm", "neoplasms", "malignancy",
                 "malignancies", "metastasis", "metastases"},
     "chemical": {"drug", "drugs", "agent", "agents", "compound", "compounds",
-                 "chemotherapy", "chemotherapeutic", "inhibitor", "inhibitors"},
+                 "chemotherapy", "chemotherapeutic", "inhibitor", "inhibitors",
+                 # generic solvents / ions / reagents EPMC tags as chemicals
+                 "water", "oxygen", "hydrogen", "nitrogen", "calcium", "sodium",
+                 "potassium", "chloride", "salt", "saline", "ethanol", "methanol",
+                 "dmso", "glucose", "carbon", "phosphate"},
 }
 
 
