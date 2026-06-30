@@ -517,6 +517,11 @@ deploy (`git push space main`), unlike the offline-only layers.** Two SEPARATE c
   `_papers` — not a per-request recompute, so the "Space never recomputes" invariant
   holds) so it's **live the moment the Space deploys, no pipeline rerun needed**; ALSO
   cached into `analytics.json` by `run_weekly.make_digest` for the offline path.
+  **De-noised (presentation-only, mentions index + lookup untouched):** EPMC over-tags
+  generic class nouns ("antibodies"→gene, "cancer"→disease) which swamped the boards,
+  and split case variants. `entity_leaderboards` now merges variants (`GROUP BY
+  LOWER(entity)`, `COUNT(DISTINCT paper_id)` — no double-count, label = top casing) and
+  drops a small per-type generic denylist (`_LEADERBOARD_STOPWORDS`).
 - **Tests**: `tests/test_entity_capabilities.py` (5 pass, network/key-free — mention
   lookup incl. annotation-only entity + type filter + empty, planner tool exposure +
   dispatch, leaderboard distinct-paper counts + HTML). Full suite green.
