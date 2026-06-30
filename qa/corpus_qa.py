@@ -328,6 +328,13 @@ def answer_meta(question: str, retriever, profile: dict) -> str | None:
     # caller routes it to the LLM planner, which honors the topic via search_corpus.
     if intent == LIST_RECENT and is_hybrid(question):
         return None
+    # Same trap for COUNTS: "how many papers mention SMAD4?" matches the corpus-size
+    # regex ("how many ... papers") but is really an ENTITY-COUNT question — a bare
+    # corpus-size answer would ignore SMAD4. Defer so the planner answers it via
+    # find_papers_mentioning (which returns the per-entity count). A plain "how many
+    # papers do you have?" has no such constraint and stays a size answer.
+    if intent == CORPUS_SIZE and _RE_TOPIC_CONSTRAINT.search(question):
+        return None
     if intent == HELP:  # no DB access needed
         return _HELP
     conn = db.connect(retriever.db_path)

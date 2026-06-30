@@ -78,6 +78,18 @@ def test_papers_mentioning_text_type_filter_and_empty():
     assert "No papers" in corpus_qa.papers_mentioning_text(r, "BRCA2")
 
 
+def test_entity_count_question_defers_to_planner():
+    # "how many papers mention SMAD4?" matches the corpus-size regex but must DEFER
+    # (return None) so the planner's find_papers_mentioning answers the per-entity
+    # count — otherwise it wrongly returns total corpus size.
+    r = _FakeRetriever(_seed())
+    assert corpus_qa.answer_meta("How many papers mention SMAD4?", r, {}) is None
+    assert corpus_qa.answer_meta("how many papers are about gemcitabine?", r, {}) is None
+    # A plain size question (no entity constraint) still answers directly.
+    out = corpus_qa.answer_meta("How many papers do you have?", r, {})
+    assert out is not None and "active PDAC papers" in out
+
+
 def test_planner_exposes_and_dispatches_find_papers_mentioning():
     specs = {s["name"]: s for s in tool_specs({})}
     assert "find_papers_mentioning" in specs
