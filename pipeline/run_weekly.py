@@ -159,8 +159,13 @@ def make_digest(window: dict, *, db_path: Path = DEFAULT_DB, client=None,
     # Cache the FULL per-area movers (top_n large) so the Space 'Trends' tab can
     # render every tracked term; the email re-caps to its top slice below.
     movers = analytics.keyword_movers(conn, profile, top_n=50)
+    # Most-mentioned-entity leaderboards (ADR-0004 mentions index) for the Space
+    # 'Trends' tab; cached so the offline analytics.json is the single source.
+    entity_leaderboards = analytics.entity_leaderboards(conn, top_n=25)
     conn.close()
-    analytics.cache({**adata, "keyword_movers": movers}, ROOT / "data" / "analytics.json")
+    analytics.cache({**adata, "keyword_movers": movers,
+                     "entity_leaderboards": entity_leaderboards},
+                    ROOT / "data" / "analytics.json")
     pdac_query = load_config().get("europepmc", {}).get("query", "")
     # SPACE_URL (config, not code): when set, the email's two trend blocks link to
     # the Space's "Trends & Translational Motion" tab for the full lists. Omitted

@@ -388,3 +388,77 @@ def topic_breakdown_text(retriever, profile: dict, window_days: int | None = Non
 
 def help_text() -> str:
     return _HELP
+
+
+# --- entity-mention lookup (ADR-0004 mentions index) -------------------------
+# Distinct from semantic search and from focus-area classification: this answers
+# "which papers LITERALLY mention <entity>?" from the `mentions` table (curated
+# literal_scan + broad-recall EPMC text-mined annotations). Real rows, real DOIs.
+
+_MENTION_TYPES = ("gene", "disease", "chemical", "organism")
+
+
+def _format_mentions(rows, entity: str, entity_type: str | None, total: int) -> str:
+    import json
+    type_phrase = f" {entity_type}" if entity_type else ""
+    if not rows:
+        scope = f" as a{type_phrase} entity" if entity_type else ""
+        return (f"No papers in the corpus literally mention **{entity}**{scope}. "
+                f"Mentions come from a curated symbol scan plus Europe PMC's text-mined "
+                f"annotations; if the term is a synonym or an untagged variant it "
+                f"may not be indexed — try a topical search instead.")
+    shown = len(rows)
+    head = (f"**{total:,}** paper{'s' if total != 1 else ''} in the corpus mention "
+            f"**{entity}**{(' (' + entity_type + ')') if entity_type else ''}"
+            + (f" — showing the {shown} most recent:" if total > shown else ":"))
+    lines = [head, ""]
+    for r in rows:
+        d = dict(r)
+        authors = json.loads(d["authors"]) if d.get("authors") else []
+        who = _authors_str(authors)
+        link = d.get("oa_fulltext_url") or (f"https://doi.org/{d['doi']}" if d.get("doi") else None)
+        title = d.get("title") or "(untitled)"
+        title_md = f"[{title}]({link})" if link else title
+        bits = [x for x in [who, d.get("journal_or_server"), d.get("published_date")] if x]
+        meta = (" — " + " · ".join(bits)) if bits else ""
+        cite = f" — `{d.get('doi') or d.get('paper_id')}`"
+        tag = " · OA" if d.get("is_oa") else ""
+        lines.append(f"- {title_md}{meta}{cite}{tag}")
+    lines.append("\n_A \"mention\" is a literal occurrence in the title/abstract (curated "
+                 "symbols) or a Europe PMC text-mined annotation — distinct from the "
+                 "focus-area topic labels._")
+    return "\n".join(lines)
+
+
+def papers_mentioning_text(retriever, entity: str, entity_type: str | None = None,
+                           limit: int = 20) -> str:
+    """List papers that LITERALLY mention ``entity`` (optionally typed), newest first.
+
+    Backed by the ADR-0004 ``mentions`` index (literal_scan ∪ epmc_annotation).
+    Opens its own short-lived connection from ``retriever.db_path`` (Gradio worker
+    thread safety, same as the other wrappers). Returns grounded text with DOIs.
+    """
+    entity = (entity or "").strip()
+    if not entity:
+        return "No entity was given to look up. Name a gene, drug, or disease (e.g. 'MYC')."
+    et = entity_type if entity_type in _MENTION_TYPES else None
+    where_type = " AND m.entity_type = ?" if et else ""
+    conn = db.connect(retriever.db_path)
+    try:
+        args: list = [entity]
+        if et:
+            args.append(et)
+        total = conn.execute(
+            f"SELECT COUNT(DISTINCT p.paper_id) FROM papers p JOIN mentions m "
+            f"ON m.paper_id=p.paper_id WHERE p.excluded=0 AND m.entity=? COLLATE NOCASE{where_type}",
+            args).fetchone()[0]
+        rows = conn.execute(
+            f"SELECT DISTINCT p.doi, p.title, p.authors, p.journal_or_server, "
+            f"p.published_date, p.first_seen_date, p.is_oa, p.oa_fulltext_url, p.paper_id "
+            f"FROM papers p JOIN mentions m ON m.paper_id=p.paper_id "
+            f"WHERE p.excluded=0 AND m.entity=? COLLATE NOCASE{where_type} "
+            f"ORDER BY p.first_seen_date DESC, p.relevance_score DESC LIMIT ?",
+            args + [limit]).fetchall()
+        return _format_mentions(rows, entity, et, total)
+    finally:
+        conn.close()

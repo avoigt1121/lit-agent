@@ -59,9 +59,16 @@ topic ("new papers this week mentioning MYC"), use search_corpus with that topic
 - "How many papers?" / corpus size → corpus_stats.
 - "What topics are covered / most covered?" → topic_breakdown.
 - A specific paper by DOI → get_paper.
+- "Which / how many papers MENTION <gene/drug/disease>?" (a literal named entity, e.g. \
+"papers that mention SMAD4", "how many papers mention gemcitabine") → \
+find_papers_mentioning. This is an EXACT index lookup over the corpus's literal + \
+text-mined entity annotations — use it instead of search_corpus when the user asks who \
+mentions a specific named entity, and combine its count with a search_corpus call if \
+they also want the substance of those papers.
 You may call several tools (e.g. search two related sub-topics, or stats + a search) \
 before answering. Prefer `focus_area` only when the question clearly targets one of the \
-defined areas; for a literal gene/term mention, put it in `query` instead.
+defined areas. For a CONCEPTUAL/topical question ("how does MYC drive PDAC?") use \
+search_corpus; for a LITERAL "papers mentioning MYC" lookup use find_papers_mentioning.
 
 After the tools return, write the answer. The retrieved passages are ABSTRACTS \
 ONLY. Apply these rules exactly:
@@ -135,6 +142,26 @@ def tool_specs(profile: dict) -> list[dict]:
                 "type": "object",
                 "properties": {"doi": {"type": "string", "description": "The paper's DOI, e.g. 10.1234/abc."}},
                 "required": ["doi"],
+            },
+        },
+        {
+            "name": "find_papers_mentioning",
+            "description": (
+                "EXACT lookup of papers that LITERALLY mention a named entity (a gene, "
+                "drug/chemical, or disease), from the corpus's literal + Europe PMC "
+                "text-mined annotation index. Returns the total count plus the most "
+                "recent matching papers with DOIs. Use for 'which/how many papers mention "
+                "X' — NOT for conceptual questions (use search_corpus for those)."),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "entity": {"type": "string",
+                               "description": "The named entity exactly as written, e.g. 'SMAD4', 'gemcitabine', 'cholangiocarcinoma'."},
+                    "entity_type": {"type": "string", "enum": list(corpus_qa._MENTION_TYPES),
+                                    "description": "Optional filter: gene | disease | chemical | organism. Omit to match any type."},
+                    "limit": {"type": "integer", "description": "Max papers to list (default 20)."},
+                },
+                "required": ["entity"],
             },
         },
     ]
@@ -224,6 +251,11 @@ class QueryPlanner:
                                                   int(wd) if wd else None)
         if name == "get_paper":
             return self._get_paper(args.get("doi", ""))
+        if name == "find_papers_mentioning":
+            limit = args.get("limit")
+            return corpus_qa.papers_mentioning_text(
+                self.retriever, args.get("entity", ""), args.get("entity_type"),
+                int(limit) if limit else 20)
         return f"Unknown tool: {name}"
 
     # -- the loop ------------------------------------------------------------

@@ -79,6 +79,15 @@ class LitAgentUI:
         # corpus and a key; without a key we keep the key-free deterministic path.
         if self._retriever is not None and self._client is not None:
             self._planner = QueryPlanner(self._retriever, self._client, self._profile)
+        # Entity-mention leaderboards (ADR-0004): a one-time cheap indexed read at
+        # startup from the read-only corpus (same pattern as the retriever loading
+        # _papers once) — NOT a per-request recompute. Powers the Trends tab.
+        self._entity_leaderboards = {}
+        if self._retriever is not None:
+            try:
+                self._entity_leaderboards = analytics.entity_leaderboards(self._retriever.conn)
+            except Exception as exc:  # noqa: BLE001 — Trends tab degrades gracefully
+                logger.warning("entity leaderboards unavailable: %s", exc)
 
     # ------------------------------------------------------------------
     def _sources_md(self, passages) -> str:
@@ -241,6 +250,15 @@ class LitAgentUI:
             parts.append(analytics.movers_full_html(movers, profile, pdac_query=self._pdac_query()))
         except Exception as exc:  # noqa: BLE001
             parts.append(f'<p style="color:#6b7280;">Keyword-trend data not available yet ({exc}).</p>')
+
+        # Most-mentioned entities — genes / diseases / drugs across the corpus
+        parts.append('<h3 style="margin:20px 0 2px;">Most-mentioned entities '
+                     '<span style="font-weight:400;color:#6b7280;font-size:13px;">'
+                     '(genes · diseases · drugs across the corpus)</span></h3>')
+        try:
+            parts.append(analytics.entity_leaderboards_html(self._entity_leaderboards))
+        except Exception as exc:  # noqa: BLE001
+            parts.append(f'<p style="color:#6b7280;">Entity-mention data not available yet ({exc}).</p>')
 
         # Translational motion — full new-trials list
         parts.append('<h3 style="margin:20px 0 2px;">Translational motion '

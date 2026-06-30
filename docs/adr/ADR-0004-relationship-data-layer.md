@@ -162,7 +162,14 @@ to `papers`/`topic_tags`, to "new" (`first_seen_date`), or to the Space/Q&A.
 8. [x] Tests (`tests/test_relationship_layer.py`); ADR + CLAUDE.md note.
 9. [ ] **(operator)** Backfill the existing corpus one layer at a time
    (`python -m pipeline.mentions --all`, etc.); eyeball quality; watch Jobs billing.
-10. [ ] **(later, separate)** Read-side surfacing in `qa/` + per-area Space views — explicitly out of scope here.
+10. [~] **(later, separate)** Read-side surfacing in `qa/` + per-area Space views.
+    First two read-side capabilities landed 2026-06-30 (branch `feat/entity-read-side`):
+    (1) a `find_papers_mentioning` tool in the Q&A planner (`qa/planner.py` +
+    `qa/corpus_qa.papers_mentioning_text`) so chat answers "which/how many papers
+    mention <gene/drug/disease>?" from the mentions index; (2) most-mentioned-entity
+    leaderboards (`pipeline/analytics.entity_leaderboards[_html]`) rendered on the
+    Space 'Trends' tab (computed once at startup from the read-only corpus + cached to
+    `analytics.json`). Per-area tabs + semantic edges still pending.
 
 ## EPMC annotation enrichment (2026-06-29, branch `feat/epmc-annotations`)
 

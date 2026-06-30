@@ -341,6 +341,63 @@ def movers_full_html(movers: dict, profile: dict, pdac_query: str | None = None,
         'those rows show "—". Counts are Europe PMC keyword matches.</div></div>')
 
 
+# --- entity leaderboards (ADR-0004 mentions index) ---------------------------
+# A DIFFERENT lens from the keyword movers above: movers measure Europe PMC search
+# VOLUME for a curated term list; these count DISTINCT CORPUS PAPERS that literally
+# mention each entity (curated literal_scan ∪ EPMC text-mined annotations). It is a
+# cheap indexed GROUP BY over the `mentions` table — read once, not per request.
+
+ENTITY_LEADERBOARD_TYPES = ("gene", "disease", "chemical")
+
+
+def entity_leaderboards(conn, top_n: int = 25,
+                        types=ENTITY_LEADERBOARD_TYPES) -> dict:
+    """{entity_type: [(entity, n_papers), ...]} — most-mentioned entities per type.
+
+    Pure read over the mentions index (``db.mention_counts``); excluded papers are
+    already dropped there. Used by the Space 'Trends' tab and cacheable to
+    analytics.json for the offline path."""
+    return {et: db.mention_counts(conn, entity_type=et, top_n=top_n) for et in types}
+
+
+_ENTITY_LABELS = {"gene": "Genes / proteins", "disease": "Diseases",
+                  "chemical": "Drugs / chemicals", "organism": "Organisms"}
+
+
+def entity_leaderboards_html(leaderboards: dict) -> str:
+    """Render the most-mentioned-entities leaderboards as side-by-side columns.
+
+    Renders from the dict (no DB read), so it works off either the live read or the
+    analytics.json cache."""
+    leaderboards = leaderboards or {}
+    if not any(leaderboards.get(et) for et in leaderboards):
+        return "<p style='color:#6b7280;'>No entity-mention data yet.</p>"
+    cols = []
+    for et in ENTITY_LEADERBOARD_TYPES:
+        rows = leaderboards.get(et) or []
+        if not rows:
+            continue
+        items = "".join(
+            '<tr>'
+            f'<td style="padding:3px 12px 3px 0;font-size:13px;">{i}. {_html_escape(ent)}</td>'
+            f'<td style="padding:3px 0;text-align:right;font-size:13px;color:#6b7280;">{n:,}</td></tr>'
+            for i, (ent, n) in enumerate(rows, 1))
+        cols.append(
+            '<div style="flex:1;min-width:200px;">'
+            f'<div style="font-weight:600;font-size:13px;margin-bottom:4px;">{_ENTITY_LABELS.get(et, et)}</div>'
+            f'<table style="border-collapse:collapse;width:100%;">{items}</table></div>')
+    return (
+        '<div style="display:flex;gap:28px;flex-wrap:wrap;margin:8px 0;max-width:760px;">'
+        + "".join(cols) + '</div>'
+        '<div style="font-size:11px;color:#9ca3af;margin-top:6px;">Distinct corpus papers '
+        'that literally mention each entity — curated symbol scan ∪ Europe PMC text-mined '
+        'annotations (ADR-0004). Distinct from the focus-area topic labels.</div>')
+
+
+def _html_escape(s: str) -> str:
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
 def _epmc_link(pdac_query: str, term: str, start: str, end: str) -> str:
     """Europe PMC website search reproducing a tracked term's recent papers."""
     tq = f'"{term}"' if " " in term else term

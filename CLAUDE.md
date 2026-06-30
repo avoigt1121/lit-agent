@@ -488,6 +488,36 @@ lexicon terms. This adds broad-recall coverage. **MERGED to `main` + deployed
   `test_relationship_layer.py` still 6/6.
 - **Backfill trigger**: `scripts/hf_job.sh annotate` (watch Jobs billing + EPMC
   politeness; resumable so a timeout-killed Job just re-runs).
+- **Backfill RAN 2026-06-29**: HF Job enriched 43,141/43,335 EPMC-addressable papers,
+  **3,074,666 `epmc_annotation` mentions** written (~71/paper), pushed to
+  `anne-voigt/bcc-lit-corpus`. The whole corpus now has broad-recall entity coverage.
+
+### Decisions resolved (2026-06-30) — read-side entity capabilities (ADR-0004 Tier 1, first slice)
+
+First read-side surfacing of the mentions index — the DATA layer now feeds the chat
++ Space. **Branch `feat/entity-read-side`; touches `qa/` + `ui.py` so it needs a Space
+deploy (`git push space main`), unlike the offline-only layers.** Two SEPARATE capabilities:
+
+- **(1) Entity-mention lookup in chat** — new planner tool `find_papers_mentioning`
+  (`qa/planner.py`) wrapping `qa/corpus_qa.papers_mentioning_text`, which queries the
+  `mentions` table (literal_scan ∪ epmc_annotation) for papers that LITERALLY mention a
+  named gene/drug/disease, returns the total count + most-recent matches with DOIs.
+  Distinct from `search_corpus` (semantic) and focus-area labels (classifier). Planner
+  preamble updated to route "which/how many papers mention X" → this tool, conceptual
+  "how does X work" → `search_corpus`. Optional `entity_type` enum (gene|disease|
+  chemical|organism). Key-free degradation unchanged (planner only built with a key).
+- **(2) Most-mentioned-entity leaderboards** — `pipeline/analytics.entity_leaderboards
+  (conn, top_n)` + `entity_leaderboards_html()` (top genes/diseases/drugs by DISTINCT
+  papers, via `db.mention_counts`). Rendered on the Space **Trends** tab. Computed ONCE
+  at Space startup from the read-only corpus (same pattern as the retriever loading
+  `_papers` — not a per-request recompute, so the "Space never recomputes" invariant
+  holds) so it's **live the moment the Space deploys, no pipeline rerun needed**; ALSO
+  cached into `analytics.json` by `run_weekly.make_digest` for the offline path.
+- **Tests**: `tests/test_entity_capabilities.py` (5 pass, network/key-free — mention
+  lookup incl. annotation-only entity + type filter + empty, planner tool exposure +
+  dispatch, leaderboard distinct-paper counts + HTML). Full suite green.
+- **Not yet built (still deferred)**: per-area Space tabs, ADR-0003 semantic edges,
+  citation/cross-field/OHSU-map read surfaces.
 
 ### Decisions resolved (2026-06-29) — Q&A handles corpus/meta questions, not just topical
 
