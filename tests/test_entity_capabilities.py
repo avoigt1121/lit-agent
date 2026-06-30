@@ -113,6 +113,28 @@ def test_entity_leaderboards_counts_distinct_papers():
     assert lb["chemical"][0][0] == "gemcitabine"
 
 
+def test_leaderboard_stopwords_and_variant_merge():
+    dbp = Path(tempfile.mkdtemp()) / "corpus.sqlite"
+    conn = db.connect(dbp)
+    db.init_schema(conn)
+    db.upsert_papers(conn, [_paper(f"10.2/{i}", "p") for i in range(3)])
+    # Two case variants of a real gene across papers 0 and 1; a generic class noun
+    # ("antibodies") EPMC over-tags as a gene in all three.
+    db.set_mentions_for_method(conn, "10.2/0", [{"entity_type": "gene", "entity": "MYC", "count": 1},
+                                               {"entity_type": "gene", "entity": "antibodies", "count": 1}], "epmc_annotation")
+    db.set_mentions_for_method(conn, "10.2/1", [{"entity_type": "gene", "entity": "myc", "count": 1},
+                                               {"entity_type": "gene", "entity": "antibodies", "count": 1}], "epmc_annotation")
+    db.set_mentions_for_method(conn, "10.2/2", [{"entity_type": "gene", "entity": "antibodies", "count": 1}], "epmc_annotation")
+    conn.commit()
+    lb = analytics.entity_leaderboards(conn, top_n=10)
+    genes = dict(lb["gene"])
+    # 'antibodies' is a denylisted generic term -> absent despite being most frequent.
+    assert "antibodies" not in {k.lower() for k in genes}
+    # 'MYC'/'myc' merged to ONE row, 2 distinct papers, labelled with the top casing.
+    assert genes.get("MYC") == 2 and "myc" not in genes
+    conn.close()
+
+
 def test_entity_leaderboards_html_renders_and_handles_empty():
     r = _FakeRetriever(_seed())
     html = analytics.entity_leaderboards_html(analytics.entity_leaderboards(r.conn))

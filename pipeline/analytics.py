@@ -349,15 +349,74 @@ def movers_full_html(movers: dict, profile: dict, pdac_query: str | None = None,
 
 ENTITY_LEADERBOARD_TYPES = ("gene", "disease", "chemical")
 
+# Presentation-only denylist for the leaderboards (NOT the underlying mentions
+# index — entity LOOKUP is unaffected). Europe PMC's NLP tags generic class nouns
+# ("antibodies", "protein") as Gene_Proteins and bare "cancer"/"tumor" as Diseases,
+# which otherwise swamp the boards. Lowercased; matched after case-folding. A small,
+# obviously-generic set on purpose — when unsure, keep the term (don't hide real
+# entities). Shared terms + per-type terms are unioned.
+_STOP_COMMON = {"disease", "diseases", "syndrome", "disorder", "protein", "proteins"}
+_LEADERBOARD_STOPWORDS = {
+    "gene": {"antibody", "antibodies", "peptide", "peptides", "antigen", "antigens",
+             "enzyme", "enzymes", "receptor", "receptors", "hormone", "hormones",
+             "cytokine", "cytokines", "ligand", "ligands", "isoform", "isoforms",
+             "marker", "markers", "mrna", "rna", "dna"},
+    "disease": {"cancer", "cancers", "tumor", "tumors", "tumour", "tumours",
+                "carcinoma", "carcinomas", "neoplasm", "neoplasms", "malignancy",
+                "malignancies", "metastasis", "metastases"},
+    "chemical": {"drug", "drugs", "agent", "agents", "compound", "compounds",
+                 "chemotherapy", "chemotherapeutic", "inhibitor", "inhibitors"},
+}
+
 
 def entity_leaderboards(conn, top_n: int = 25,
                         types=ENTITY_LEADERBOARD_TYPES) -> dict:
     """{entity_type: [(entity, n_papers), ...]} — most-mentioned entities per type.
 
-    Pure read over the mentions index (``db.mention_counts``); excluded papers are
-    already dropped there. Used by the Space 'Trends' tab and cacheable to
-    analytics.json for the offline path."""
-    return {et: db.mention_counts(conn, entity_type=et, top_n=top_n) for et in types}
+    Pure read over the ADR-0004 mentions index. Two presentation-only refinements
+    over a raw ``db.mention_counts`` so the boards surface real entities:
+      - **Case-insensitive variant merge** — group by ``LOWER(entity)`` with
+        ``COUNT(DISTINCT paper_id)`` so 'MYC'/'myc' (and 'Antibody'/'antibodies'
+        when both survive) collapse to ONE row with a correct, non-double-counted
+        paper count; the displayed label is the most-frequent original casing.
+      - **Generic-term denylist** (``_LEADERBOARD_STOPWORDS``) drops class nouns
+        EPMC over-tags. Both refinements affect ONLY the leaderboard — the mentions
+        table and entity LOOKUP (find_papers_mentioning) are untouched."""
+    out: dict = {}
+    for et in types:
+        stops = _STOP_COMMON | _LEADERBOARD_STOPWORDS.get(et, set())
+        # GROUP BY LOWER(entity): COUNT(DISTINCT paper_id) is correct across variants
+        # (a paper mentioning two casings is still one paper). Over-fetch, then drop
+        # denied keys in Python and trim to top_n (keeps the SQL stop-list simple).
+        rows = conn.execute(
+            "SELECT LOWER(m.entity) AS k, COUNT(DISTINCT m.paper_id) AS c "
+            "FROM mentions m JOIN papers p ON p.paper_id=m.paper_id "
+            "WHERE m.entity_type=? AND p.excluded=0 "
+            "GROUP BY LOWER(m.entity) ORDER BY c DESC LIMIT ?",
+            (et, top_n + len(stops) + 50)).fetchall()
+        kept = [(k, c) for (k, c) in rows if k not in stops][:top_n]
+        # Resolve each surviving lower-key to its most-common original surface form.
+        labels = _label_for_keys(conn, et, [k for k, _ in kept])
+        out[et] = [(labels.get(k, k), c) for k, c in kept]
+    return out
+
+
+def _label_for_keys(conn, entity_type: str, keys: list[str]) -> dict[str, str]:
+    """For each lowercased key, the original-cased surface form seen in the most
+    papers (so 'MYC' beats 'myc' for display). One query, chunked under the var limit."""
+    labels: dict[str, str] = {}
+    for i in range(0, len(keys), 400):
+        chunk = keys[i:i + 400]
+        if not chunk:
+            continue
+        ph = ",".join("?" * len(chunk))
+        rows = conn.execute(
+            f"SELECT LOWER(entity) k, entity, COUNT(DISTINCT paper_id) c FROM mentions "
+            f"WHERE entity_type=? AND LOWER(entity) IN ({ph}) "
+            f"GROUP BY entity ORDER BY c DESC", (entity_type, *chunk)).fetchall()
+        for k, entity, _c in rows:
+            labels.setdefault(k, entity)  # first row per key = highest count (ordered)
+    return labels
 
 
 _ENTITY_LABELS = {"gene": "Genes / proteins", "disease": "Diseases",
