@@ -98,6 +98,33 @@ def test_cross_field_shared_gene_edge():
                and set(r["evidence"]["genes"]) == {"MYC", "KRAS"} for r in rels)
 
 
+def test_shared_gene_edges_ignore_epmc_annotation_only():
+    """Relations use ONLY curated literal_scan genes. A gene shared between two
+    papers solely as an epmc_annotation (the broad, noisy source) must NOT create
+    a shared_genes edge — otherwise generic tags (antibodies, cytokine) would
+    swamp the graph (and blow up the candidate join at corpus scale)."""
+    dbp = _fresh_db()
+    conn = db.connect(dbp)
+    db.upsert_papers(conn, [
+        _paper("10.1/x", "Paper X", "No curated gene symbols here."),
+        _paper("10.1/y", "Paper Y", "No curated gene symbols here either."),
+    ])
+    conn.close()
+    mentions.index_mentions(dbp)  # literal scan finds no shared curated gene
+    # Both papers share a gene ONLY via the broad EPMC-annotation source.
+    conn = db.connect(dbp)
+    for pid in ("10.1/x", "10.1/y"):
+        db.set_mentions_for_method(
+            conn, pid, [{"entity_type": "gene", "entity": "antibodies", "count": 3}],
+            method="epmc_annotation")
+    conn.close()
+    relationships.derive_relations(dbp)
+    conn = db.connect(dbp)
+    rels = db.relations_for_paper(conn, "10.1/x", rel_type="shared_genes")
+    conn.close()
+    assert rels == []  # annotation-only shared gene -> no edge
+
+
 def test_citation_edge_resolution_and_idempotency():
     dbp = _fresh_db()
     _seed(dbp)

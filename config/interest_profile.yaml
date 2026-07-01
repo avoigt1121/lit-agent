@@ -209,6 +209,13 @@ relationships:
     min_shared_genes: 2    # an edge needs >= this many shared literal genes
     max_neighbors: 25      # cap shared-gene neighbors per paper (combinatorics)
     shared_focus: true     # also emit a shared_focus edge for co-classified pairs
+    # Which mention source feeds shared-gene edges. literal_scan = the curated
+    # lexicon (high-signal genes: KRAS, MYC, BRCA2, …). The broad epmc_annotation
+    # set is dominated by generic tags (antibodies, cytokine, CD8) that make edges
+    # noisy and the candidate join quadratic — so it is NOT used here, only for the
+    # read-side "papers mentioning X" lookup. Set to null to span all sources.
+    gene_method: literal_scan
+    max_entity_papers: 5000  # skip a gene appearing in > this many papers (uninformative + costly)
   ohsu_map:
     enabled: true
     # v1 population = author-surname match against config/seed_authors.yaml.

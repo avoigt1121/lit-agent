@@ -587,14 +587,26 @@ def set_mentions_for_method(conn: sqlite3.Connection, paper_id: str, mentions: l
 
 
 def papers_mentioning(conn: sqlite3.Connection, entity: str, entity_type: str | None = None,
-                      include_excluded: bool = False) -> list[str]:
-    """paper_ids that literally mention ``entity`` (case-insensitive surface match)."""
+                      include_excluded: bool = False, method: str | None = None) -> list[str]:
+    """paper_ids that literally mention ``entity`` (case-insensitive surface match).
+
+    ``method`` (e.g. ``'literal_scan'``) restricts to one mention source; the
+    default (None) matches any method, so the read-side "papers mentioning X"
+    lookup still spans both literal_scan and epmc_annotation. The relationship
+    derivation passes ``method='literal_scan'`` to use only the curated lexicon —
+    the broad EPMC annotation set is dominated by generic tags (antibodies,
+    cytokine, CD8) that make shared-gene edges noisy and the candidate join
+    quadratic.
+    """
     q = ("SELECT DISTINCT m.paper_id FROM mentions m JOIN papers p ON p.paper_id=m.paper_id "
          "WHERE m.entity=? COLLATE NOCASE")
     args: list = [entity]
     if entity_type:
         q += " AND m.entity_type=?"
         args.append(entity_type)
+    if method:
+        q += " AND m.method=?"
+        args.append(method)
     if not include_excluded:
         q += " AND p.excluded=0"
     return [r[0] for r in conn.execute(q, args)]
