@@ -443,6 +443,37 @@ semantic edges are a separate later table.
   (`python -m pipeline.mentions --all`, etc.). Read-side surfacing (qa/ + Space
   tabs) is deliberately deferred (Tier 1/2).
 
+### Decisions resolved (2026-07-01) — ADR-0004 corpus backfill RUN + two fixes it exposed
+
+Ran the ADR-0004 backfill over the live 44,694-paper corpus (pull → each layer
+`--all` → verify; NOT yet pushed to the hub). Final state: `literal_scan` 19,166 +
+`epmc_annotation` 3,074,666 mentions; citations 31 (Loveless seed, 24 in-corpus
+citers); `paper_relations` shared_genes 79,888 / shared_focus 48,998 / citation 24;
+OHSU 425 links. The backfill exposed two real bugs, now fixed (`dba3eff`, `26cddb7`):
+
+- **Clobber bug (`pipeline/mentions.py`).** The literal scanner wrote via the
+  blanket `db.set_mentions` (deletes ALL a paper's mention rows), so running it
+  after the annotation layer WIPED all 3.07M `epmc_annotation` rows (owned by
+  `annotate.py` via `set_mentions_for_method`). The weekly cron was safe by luck
+  (mentions runs before annotate on brand-new papers), but any backfill clobbered.
+  Fix: literal scan now writes only `literal_scan` via `set_mentions_for_method`
+  (per that fn's contract); the two passes are independent + order-free. Removed the
+  now-dead `annotation_mentions` helper.
+- **Relations didn't scale/denoise over the full annotation set.** Shared-gene
+  candidates were drawn from ALL `gene` mentions, but the EPMC set is dominated by
+  generic tags (antibodies 12,783 papers, cytokine 5,614, CD8 7,239) → meaningless
+  "shared-gene" edges + a quadratic candidate join that killed `--all`. Fix (Option
+  A): restrict candidates to the curated `literal_scan` lexicon (config
+  `gene_method`, default `literal_scan`) + a `max_entity_papers` frequency cap;
+  `db.papers_mentioning(method=…)` gained an optional filter (default unchanged, so
+  the read-side "papers mentioning X" still spans both sources). Also a **perf** fix:
+  `derive_relations` precomputes whole-corpus lookups in memory (`_load_indices` →
+  `_edges_for_paper`, pure set math) instead of millions of per-candidate SQL
+  queries — full corpus `--all` went from ~2h to ~70s. New test asserts an
+  annotation-only generic gene yields no edge; suite green (7/7 relationship, 20 total).
+- **NOT pushed yet**: two commits are 2 ahead of `origin/main`; the backfilled
+  corpus is local. Push code (origin+space) + corpus (HF Dataset) pending sign-off.
+
 ### Decisions resolved (2026-06-29) — EPMC annotation enrichment of the mention index
 
 Follow-up to ADR-0004 on branch `feat/epmc-annotations` (off `feat/relationship-layer`).
