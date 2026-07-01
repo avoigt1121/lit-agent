@@ -94,19 +94,6 @@ def scan_record(rec: dict, compiled: list[tuple]) -> list[dict]:
     return out
 
 
-def annotation_mentions(rec: dict) -> list[dict]:
-    """Mentions from the record's existing EPMC text-mined annotations (if any)."""
-    ann = rec.get("annotations") or {}
-    out: list[dict] = []
-    for etype, key in (("gene", "genes"), ("disease", "diseases")):
-        for ent in ann.get(key) or []:
-            ent = (ent or "").strip()
-            if ent:
-                out.append({"entity_type": etype, "entity": ent,
-                            "method": "epmc_annotation", "count": 1})
-    return out
-
-
 def index_mentions(db_path: Path = DEFAULT_DB, *, profile_path: Path = PROFILE_PATH,
                    reindex_all: bool = False, batch_commit: int = 500) -> dict:
     """Populate the ``mentions`` table for new (or all) papers. Returns a summary."""
@@ -127,9 +114,14 @@ def index_mentions(db_path: Path = DEFAULT_DB, *, profile_path: Path = PROFILE_P
         if pid in done:
             continue
         mentions = scan_record(rec, compiled)
-        if rel.get("use_epmc_annotations") or any(rec.get("annotations", {}).values()):
-            mentions += annotation_mentions(rec)
-        db.set_mentions(conn, pid, mentions, commit=False)
+        # Merge-aware write: replace ONLY this paper's literal_scan rows. The
+        # epmc_annotation method is owned by pipeline/annotate.py (richer EPMC
+        # Annotations-API data, written via set_mentions_for_method). Using the
+        # blanket set_mentions here would DELETE those annotation rows whenever the
+        # literal scan runs after them — e.g. a corpus backfill — silently wiping
+        # millions of annotation mentions. set_mentions_for_method keeps the two
+        # passes independent and order-free (per the set_mentions_for_method contract).
+        db.set_mentions_for_method(conn, pid, mentions, method="literal_scan", commit=False)
         n_papers += 1
         n_mentions += len(mentions)
         pending.append(pid)
