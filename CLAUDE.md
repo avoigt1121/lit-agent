@@ -471,8 +471,14 @@ OHSU 425 links. The backfill exposed two real bugs, now fixed (`dba3eff`, `26cdd
   `_edges_for_paper`, pure set math) instead of millions of per-candidate SQL
   queries — full corpus `--all` went from ~2h to ~70s. New test asserts an
   annotation-only generic gene yields no edge; suite green (7/7 relationship, 20 total).
-- **NOT pushed yet**: two commits are 2 ahead of `origin/main`; the backfilled
-  corpus is local. Push code (origin+space) + corpus (HF Dataset) pending sign-off.
+- **DEPLOYED (2026-07-01)**: fixes pushed to `origin`+`space` (`6a11916`); the
+  backfilled corpus pushed to `anne-voigt/bcc-lit-corpus` (VACUUMed, 834 MB — the
+  3M-row mention index is genuinely that big, freelist 0). Space restarted → pulled
+  the backfilled corpus. Verified live: "how many papers mention MYC?" → 2,721
+  (read-side lookup spans literal_scan ∪ epmc_annotation), and the original failing
+  "what new papers this week mention MYC?" now returns real recent MYC papers via
+  the planner (mention lookup + 7-day window). Weekly cron now runs the fixed,
+  fast, order-free relationship step incrementally.
 
 ### Decisions resolved (2026-06-29) — EPMC annotation enrichment of the mention index
 
